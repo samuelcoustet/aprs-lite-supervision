@@ -148,7 +148,7 @@ def get_clock_info() -> dict:
     info: dict = {"now": datetime.now(timezone.utc).isoformat(), "uptime_seconds": get_uptime_seconds(), "timezone": "?", "ntp_sync": False, "ntp_service": "?"}
     try:
         r = subprocess.run(
-            ["timedatectl", "show", "--no-pager", "-p", "Timezone,NTPSynchronized,NTP,LocalRTC,TimeUSec"],
+            ["timedatectl", "show", "--no-pager"],
             capture_output=True, text=True, timeout=5,
         )
         for line in r.stdout.splitlines():
