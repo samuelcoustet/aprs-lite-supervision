@@ -1,0 +1,27 @@
+[Unit]
+Description=APRS Lite Sidecar Dashboard
+After=network.target aprs-direwolf.service
+Wants=aprs-direwolf.service
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/aprs-sidecar-dashboard
+Environment=DB_PATH=/home/pi/aprs-sidecar-dashboard/data/sidecar.db
+Environment=CONFIG_PATH=/opt/aprs-lite/config.env
+Environment=DASHBOARD_HOST=0.0.0.0
+Environment=DASHBOARD_PORT=5080
+Environment=SERVICE_NAME=aprs-direwolf
+Environment=TUI_SERVICE=aprs-lite-tui
+Environment=WATCHDOG_SERVICE=aprs-watchdog
+Environment=JOURNAL_UNIT=aprs-direwolf
+ExecStart=/home/pi/aprs-sidecar-dashboard/venv/bin/python3 /home/pi/aprs-sidecar-dashboard/app.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aprs-lite-sidecar-dashboard
+
+[Install]
+WantedBy=multi-user.target

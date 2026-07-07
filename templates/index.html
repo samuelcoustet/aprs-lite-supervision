@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>APRS Lite Sidecar Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% if socketio_enabled %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+{% endif %}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Exo+2:wght@300;400;600;700;800&display=swap');
+:root{--b0:#0a0e14;--b1:#111820;--b2:#1a2230;--b3:#141c28;--g:#00ff88;--g2:#00cc6a;--bl:#00aaff;--am:#ffaa00;--rd:#ff4466;--t1:#e8edf3;--t2:#8899aa;--t3:#556677;--bd:#1e2a3a}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1);overflow:hidden;height:100vh}
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--b1);border-bottom:1px solid var(--bd);height:48px}
+.hdr-l{display:flex;align-items:center;gap:10px}
+.logo{font-family:'Exo 2',sans-serif;font-weight:800;font-size:17px;color:var(--g);letter-spacing:2px}
+.logo span{color:var(--t2);font-weight:400;font-size:11px;letter-spacing:0;margin-left:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--am);box-shadow:0 0 8px var(--am);animation:pu 2s infinite}
+@keyframes pu{0%,100%{opacity:1}50%{opacity:.4}}
+.hdr-s{display:flex;gap:20px;font-size:11px;color:var(--t2)}
+.hdr-s .v{color:var(--bl);font-weight:600}
+.main{display:grid;grid-template-columns:1fr 420px;height:calc(100vh - 48px)}
+@media(max-width:980px){.main{grid-template-columns:1fr;grid-template-rows:48vh 1fr}}
+.mapc{position:relative}
+#map{width:100%;height:100%;background:var(--b0)}
+.leaflet-container{background:var(--b0)!important}
+.mov{position:absolute;top:10px;left:55px;z-index:1000;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 140px)}
+.mbdg{background:rgba(10,14,20,.9);border:1px solid var(--bd);border-radius:6px;padding:5px 10px;font-size:11px;color:var(--t2);backdrop-filter:blur(8px)}
+.mbdg .c{color:var(--g);font-weight:700;font-size:13px;margin-right:4px}
+.tl-ov{position:absolute;bottom:10px;left:10px;z-index:1000;display:flex;gap:6px;flex-wrap:wrap}
+.tl-pill{background:rgba(10,14,20,.85);border-radius:4px;padding:4px 8px;font-size:10px}
+.map-ctrl{position:absolute;top:10px;right:10px;z-index:1000}
+.map-ctrl select{background:rgba(10,14,20,.9);color:var(--t1);border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-size:11px;font-family:inherit}
+.sb{display:flex;flex-direction:column;background:var(--b1);border-left:1px solid var(--bd);overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--bd);overflow-x:auto}
+.tab{padding:9px 10px;background:none;border:none;color:var(--t3);font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
+.tab.on{color:var(--g);border-bottom-color:var(--g)}
+.tab:hover{color:var(--t1);background:var(--b2)}
+.tc{display:none;flex:1;overflow-y:auto}
+.tc.on{display:flex;flex-direction:column}
+.fl{flex:1;overflow-y:auto}
+.fi{padding:7px 10px;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .15s;animation:si .3s ease-out}
+.fi:hover{background:var(--b2)}
+.fi.hp{border-left:3px solid var(--g);border-radius:0}
+.fi.np{border-left:3px solid var(--t3);border-radius:0}
+@keyframes si{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+.fh{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.fc{font-weight:700;color:var(--bl);font-size:12px}
+.ftime{font-size:10px;color:var(--t3)}
+.fty{display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600;text-transform:uppercase;margin-right:4px}
+.ty-pos{background:rgba(0,255,136,.15);color:var(--g)}.ty-msg{background:rgba(0,170,255,.15);color:var(--bl)}.ty-sts{background:rgba(255,170,0,.15);color:var(--am)}.ty-wx{background:rgba(100,200,255,.15);color:#64c8ff}.ty-me{background:rgba(200,100,255,.15);color:#c864ff}.ty-unk{background:rgba(85,102,119,.15);color:var(--t3)}.ty-q{background:rgba(255,68,102,.15);color:var(--rd)}
+.fcm{font-size:10px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fco{font-size:9px;color:var(--g2);margin-top:1px}
+.dp{display:none;padding:10px;background:var(--b3);border-top:1px solid var(--g)}
+.dp.vis{display:block}
+.dt{font-family:'Exo 2',sans-serif;font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px}
+.dr{display:flex;justify-content:space-between;padding:2px 0;font-size:10px;border-bottom:1px solid rgba(30,42,58,.5);gap:8px}
+.dlb{color:var(--t3)}.dval{color:var(--t1);text-align:right;max-width:220px;word-break:break-word}
+.raw{margin-top:6px;padding:6px;background:var(--b0);border-radius:4px;font-size:9px;color:var(--am);word-break:break-all;border:1px solid var(--bd)}
+.sg{padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.sc{padding:5px 8px;background:var(--b3);border:1px solid var(--bd);border-radius:5px;font-size:11px;color:var(--bl);text-align:center;cursor:pointer;transition:all .15s}
+.sc:hover{border-color:var(--bl);background:rgba(0,170,255,.08)}
+.sc .cnt{font-size:9px;color:var(--t3);display:block}
+.sys-panel,.cfg-panel{padding:10px}
+.sys-section{margin-bottom:14px}
+.sys-title{font-family:'Exo 2',sans-serif;font-size:12px;font-weight:600;color:var(--t2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.svc-row{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:var(--b3);border-radius:4px;margin-bottom:3px;font-size:11px;gap:8px}
+.svc-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.svc-active{background:var(--g)}.svc-inactive{background:var(--t3)}.svc-failed{background:var(--rd)}.svc-unknown{background:var(--am)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px;font-size:11px;background:var(--b3);padding:7px 8px;border-radius:4px;margin-bottom:4px}
+.k{color:var(--t3)}.v{color:var(--t1);text-align:right}
+pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px solid var(--bd);border-radius:6px;padding:10px;font-size:11px;color:var(--t1)}
+.stats-bar{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--bd)}
+.stats-bar>div{padding:8px 12px;border-right:1px solid var(--bd);background:var(--b1)}
+.stats-bar>div:last-child{border-right:none}
+.stats-bar .sl{font-size:10px;color:var(--t3)}.stats-bar .sv{font-size:16px;font-weight:600}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--b1)}::-webkit-scrollbar-thumb{background:var(--b2);border-radius:3px}
+.aprs-mk{background:none;border:none}
+.mk-dot{width:10px;height:10px;background:var(--g);border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(0,255,136,.5)}
+.mk-lbl{position:absolute;top:12px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 2px #000;pointer-events:none}
+.leaflet-popup-content-wrapper{background:var(--b3)!important;color:var(--t1)!important;border:1px solid var(--g)!important;border-radius:6px!important;font-family:'JetBrains Mono',monospace!important;box-shadow:0 0 15px rgba(0,255,136,.12)!important}
+.leaflet-popup-tip{background:var(--b3)!important;border:1px solid var(--g)!important}
+.pp-c{font-size:13px;font-weight:700;color:var(--g);margin-bottom:3px}
+.pp-i{font-size:10px;color:var(--t2);line-height:1.5}
+</style>
+</head>
+<body>
+<header class="hdr">
+  <div class="hdr-l">
+    <div class="dot" id="dot"></div>
+    <div class="logo">APRS LITE SIDECAR<span>{{ config.callsign }} - read only</span></div>
+  </div>
+  <div class="hdr-s">
+    <div>TRAMES <span class="v" id="hT">0</span></div>
+    <div>STATIONS <span class="v" id="hS">0</span></div>
+    <div>UPTIME <span class="v" id="hU">--</span></div>
+  </div>
+</header>
+<div class="main">
+  <div class="mapc">
+    <div id="map"></div>
+    <div class="mov">
+      <div class="mbdg"><span class="c" id="mC">0</span> stations</div>
+      <div class="mbdg"><span class="c" id="dwStatus">--</span> Direwolf</div>
+      <div class="mbdg"><span class="c" id="ipAddr">--</span> IP</div>
+    </div>
+    <div class="tl-ov">
+      <div class="tl-pill" style="color:#9FE1CB" id="tlT">--C</div>
+      <div class="tl-pill" style="color:#85B7EB" id="tlR">--%</div>
+      <div class="tl-pill" style="color:#FAC775" id="tlD">--%</div>
+      <div class="tl-pill" style="color:#F09595" id="tlL">load --</div>
+    </div>
+    <div class="map-ctrl">
+      <select id="mapSelect" onchange="switchMap(this.value)">
+        <option value="opentopo">OpenTopoMap</option>
+        <option value="dark">CartoDB Dark</option>
+        <option value="osm">OpenStreetMap</option>
+        <option value="satellite">Satellite</option>
+      </select>
+    </div>
+  </div>
+  <div class="sb">
+    <div class="tabs">
+      <button class="tab on" data-t="frames">Frames</button>
+      <button class="tab" data-t="stations">Stations</button>
+      <button class="tab" data-t="system">System</button>
+      <button class="tab" data-t="config">Config</button>
+    </div>
+    <div class="tc on" id="t-frames"><div class="dp" id="fDet"></div><div class="fl" id="fList"></div></div>
+    <div class="tc" id="t-stations"><div class="sg" id="sGrid"></div></div>
+    <div class="tc" id="t-system"><div class="sys-panel" id="sysPanel"></div></div>
+    <div class="tc" id="t-config"><div class="cfg-panel"><pre id="cfgRaw">Loading...</pre></div></div>
+  </div>
+</div>
+<div class="stats-bar">
+  <div><div class="sl">Frames / hour</div><div class="sv" id="sbFph">--</div></div>
+  <div><div class="sl">Last frame</div><div class="sv" id="sbLast">--</div></div>
+  <div><div class="sl">RF RX / TX / IS</div><div class="sv" id="sbCounts">--</div></div>
+  <div><div class="sl">CPU / RAM</div><div class="sv" id="sbCpu">-- / --</div></div>
+</div>
+<script>
+const CONFIG={{ config|tojson }};
+const SOCKETIO_ENABLED={{ 'true' if socketio_enabled else 'false' }};
+const TILES={
+  opentopo:['https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png','OpenTopoMap'],
+  dark:['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png','CartoDB Dark'],
+  osm:['https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png','OpenStreetMap'],
+  satellite:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}','Esri Satellite']
+};
+let curLayer=null;
+const startLat=parseFloat(CONFIG.lat||'42.9783');
+const startLon=parseFloat(CONFIG.lon||'-0.7493');
+const map=L.map('map',{zoomControl:true,attributionControl:false}).setView([startLat,startLon],10);
+L.control.attribution({prefix:false,position:'bottomleft'}).addTo(map);
+
+function switchMap(k){
+  if(curLayer)map.removeLayer(curLayer);
+  const t=TILES[k]||TILES.opentopo;
+  curLayer=L.tileLayer(t[0],{maxZoom:18,subdomains:k==='satellite'?'a':'abc'}).addTo(map);
+}
+switchMap('opentopo');
+
+const markers={},stationData={},seen=new Set();
+let totalFrames=0;
+let servicesCache=[];
+
+function mkIcon(c,n){const col=n?'#00ff88':'#00aaff';return L.divIcon({className:'aprs-mk',html:`<div class="mk-dot" style="background:${col};box-shadow:0 0 8px ${col}80"></div><div class="mk-lbl">${c}</div>`,iconSize:[10,10],iconAnchor:[5,5]})}
+function tyC(t){return{position:'ty-pos',position_ts:'ty-pos',message:'ty-msg',message_ack:'ty-msg',status:'ty-sts',weather:'ty-wx','mic-e':'ty-me',query:'ty-q'}[t]||'ty-unk'}
+function fmtT(ts){try{return new Date(ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}catch{return'--:--'}}
+function fmtAgo(ts){if(!ts)return'--';const d=Math.floor((Date.now()-new Date(ts).getTime())/1000);if(d<60)return d+'s';if(d<3600)return Math.floor(d/60)+'min';return Math.floor(d/3600)+'h'}
+function fmtUptime(s){if(!s)return'--';const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return d>0?`${d}j ${h}h`:`${h}h ${m}m`}
+function pct(v){return v==null?'--':`${Math.round(v)}%`}
+function temp(v){return v==null?'--C':`${v.toFixed(1)}C`}
+
+function updMk(f){
+  if(f.lat==null||f.lon==null)return;
+  const c=f.source||f.callsign;if(!c)return;
+  if(markers[c]){markers[c].setLatLng([f.lat,f.lon]);markers[c].setIcon(mkIcon(c,true))}
+  else{
+    const m=L.marker([f.lat,f.lon],{icon:mkIcon(c,true)}).addTo(map);
+    m.bindPopup(`<div class="pp-c">${c}</div><div class="pp-i">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}<br>${f.comment||f.last_comment||''}<br>${f.origin||''}</div>`,{maxWidth:240});
+    markers[c]=m;
+  }
+  setTimeout(()=>{if(markers[c])markers[c].setIcon(mkIcon(c,false))},5000);
+  document.getElementById('mC').textContent=Object.keys(markers).length;
+}
+
+function addF(f){
+  const list=document.getElementById('fList');
+  const item=document.createElement('div');
+  const hasPos=f.lat!=null&&f.lon!=null;
+  item.className=`fi ${hasPos?'hp':'np'}`;
+  item.innerHTML=`<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${fmtT(f.timestamp)}</span></div><div><span class="fty ${tyC(f.data_type)}">${f.data_type||'?'}</span><span class="fcm">${f.comment||f.raw?.substring(0,55)||''}</span></div>${hasPos?`<div class="fco">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} - ${f.origin||'rf'}</div>`:`<div class="fco">${f.origin||'rf'}</div>`}`;
+  item.onclick=()=>showDet(f);
+  if(hasPos)item.ondblclick=()=>{map.setView([f.lat,f.lon],13);markers[f.source]?.openPopup()};
+  list.prepend(item);
+  while(list.children.length>200)list.removeChild(list.lastChild);
+}
+
+function showDet(f){
+  const panel=document.getElementById('fDet');
+  panel.className='dp vis';
+  const rows=[['Source',f.source],['Destination',f.destination],['Path',f.path||'-'],['Type',f.data_type],['Origin',f.origin||'-'],['Lat',f.lat!=null?f.lat.toFixed(5):'-'],['Lon',f.lon!=null?f.lon.toFixed(5):'-'],['Symbol',f.symbol||'-'],['Speed',f.speed!=null?f.speed+' kn':'-'],['Course',f.course!=null?f.course+' deg':'-'],['Altitude',f.altitude!=null?f.altitude+' ft':'-'],['Comment',f.comment||'-']].map(([l,v])=>`<div class="dr"><span class="dlb">${l}</span><span class="dval">${v}</span></div>`).join('');
+  panel.innerHTML=`<div class="dt">${f.source||'?'}</div>${rows}<div class="raw">${f.raw||''}</div>`;
+}
+
+function updSt(c,f){
+  if(!seen.has(c)){seen.add(c);stationData[c]={count:0}}
+  stationData[c].count=(stationData[c].count||0)+1;
+  stationData[c].last=f;
+}
+
+function renderStations(){
+  const grid=document.getElementById('sGrid');
+  grid.innerHTML='';
+  const sorted=Object.entries(stationData).sort((a,b)=>(b[1].count||0)-(a[1].count||0));
+  for(const [c,d] of sorted){
+    const cell=document.createElement('div');
+    cell.className='sc';
+    const last=d.last||{};
+    cell.innerHTML=`${c}<span class="cnt">${d.count} frames${last.origin?` - ${last.origin}`:''}</span>`;
+    cell.onclick=()=>{if(markers[c]){map.setView(markers[c].getLatLng(),13);markers[c].openPopup()}};
+    grid.appendChild(cell);
+  }
+}
+
+function serviceClass(status){
+  if(status==='active')return'svc-active';
+  if(status==='failed')return'svc-failed';
+  if(status==='unknown')return'svc-unknown';
+  return'svc-inactive';
+}
+
+function updateStats(stats){
+  totalFrames=stats.frames_total||0;
+  document.getElementById('hT').textContent=stats.frames_total||0;
+  document.getElementById('hS').textContent=stats.stations_total||0;
+  document.getElementById('hU').textContent=fmtUptime(stats.uptime_seconds);
+  document.getElementById('sbFph').textContent=stats.frames_per_hour||0;
+  document.getElementById('sbLast').textContent=fmtAgo(stats.last_frame_time||stats.last_frame_time_runtime);
+  document.getElementById('sbCpu').textContent=`${pct(stats.cpu_usage)} / ${pct(stats.ram_usage)}`;
+  const counts=stats.counts||{};
+  document.getElementById('sbCounts').textContent=`${counts.rf_rx||0} / ${counts.rf_tx||0} / ${counts.is_rx||0}`;
+  document.getElementById('tlT').textContent=temp(stats.cpu_temp);
+  document.getElementById('tlR').textContent=`RAM ${pct(stats.ram_usage)}`;
+  document.getElementById('tlD').textContent=`DISK ${pct(stats.disk_usage)}`;
+  document.getElementById('tlL').textContent=stats.last_error?'warn':`load ${stats.load_avg_1m!=null?stats.load_avg_1m:'--'}`;
+  document.getElementById('ipAddr').textContent=stats.primary_ip||'--';
+  const dw=document.getElementById('dwStatus');
+  dw.textContent=stats.direwolf_status||'--';
+  dw.style.color=stats.direwolf_status==='active'?'#00ff88':(stats.direwolf_status==='failed'?'#ff4466':'#ffaa00');
+}
+
+function renderSystem(summary){
+  servicesCache=summary.services||[];
+  const panel=document.getElementById('sysPanel');
+  const stats=summary.db?.stats||{};
+  let html='<div class="sys-section"><div class="sys-title">Services</div>';
+  for(const svc of servicesCache){
+    html+=`<div class="svc-row"><div><span class="svc-dot ${serviceClass(svc.status)}"></span>${svc.name}</div><div>${svc.status}</div></div>`;
+  }
+  html+='</div>';
+  html+='<div class="sys-section"><div class="sys-title">Runtime</div>';
+  html+=`<div class="kv"><div class="k">Host</div><div class="v">${summary.hostname||'--'}</div></div>`;
+  html+=`<div class="kv"><div class="k">Primary IP</div><div class="v">${summary.primary_ip||'--'}</div></div>`;
+  html+=`<div class="kv"><div class="k">Config path</div><div class="v">${summary.config_path||CONFIG.config_path}</div></div>`;
+  html+=`<div class="kv"><div class="k">DB path</div><div class="v">${summary.db?.path||CONFIG.db_path}</div></div>`;
+  html+=`<div class="kv"><div class="k">Last frame</div><div class="v">${summary.last_frame||'-'}</div></div>`;
+  html+=`<div class="kv"><div class="k">Beacon count</div><div class="v">${summary.counts?.beacons||0}</div></div>`;
+  html+='</div>';
+  html+='<div class="sys-section"><div class="sys-title">Database</div>';
+  html+=`<div class="kv"><div class="k">Frames</div><div class="v">${stats.frames_total||0}</div></div>`;
+  html+=`<div class="kv"><div class="k">Stations</div><div class="v">${stats.stations_total||0}</div></div>`;
+  html+=`<div class="kv"><div class="k">Size</div><div class="v">${((stats.db_size_bytes||0)/1024/1024).toFixed(1)} MB</div></div>`;
+  html+=`<div class="kv"><div class="k">Free disk</div><div class="v">${((stats.db_free_bytes||0)/1024/1024/1024).toFixed(1)} GB</div></div>`;
+  html+='</div>';
+  if(summary.last_error){
+    html+=`<div class="sys-section"><div class="sys-title">Collector warning</div><pre>${summary.last_error}</pre></div>`;
+  }
+  panel.innerHTML=html;
+}
+
+function loadConfigRaw(){
+  fetch('/api/system/config/raw').then(r=>r.text()).then(txt=>{
+    document.getElementById('cfgRaw').textContent=txt||'# empty';
+  }).catch(()=>{document.getElementById('cfgRaw').textContent='Unable to load config';});
+}
+
+function loadFrames(){
+  fetch('/api/frames?n=80').then(r=>r.json()).then(frames=>{
+    document.getElementById('fList').innerHTML='';
+    frames.reverse().forEach(f=>{
+      addF(f);
+      if(f.source)updSt(f.source,f);
+    });
+    renderStations();
+  });
+}
+
+function loadPositions(){
+  fetch('/api/positions').then(r=>r.json()).then(positions=>{
+    positions.forEach(p=>{
+      updMk({
+        source:p.callsign,
+        lat:p.lat,
+        lon:p.lon,
+        comment:p.comment,
+        altitude:p.altitude,
+        origin:p.origin
+      });
+    });
+  });
+}
+
+function pollStats(){
+  fetch('/api/stats').then(r=>r.json()).then(updateStats).catch(()=>{});
+}
+
+function pollSystem(){
+  fetch('/api/system/summary').then(r=>r.json()).then(renderSystem).catch(()=>{});
+}
+
+document.querySelectorAll('.tab').forEach(btn=>{btn.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.tc').forEach(x=>x.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('t-'+btn.dataset.t).classList.add('on');
+  if(btn.dataset.t==='stations')renderStations();
+  if(btn.dataset.t==='system')pollSystem();
+  if(btn.dataset.t==='config')loadConfigRaw();
+};});
+
+loadFrames();
+loadPositions();
+pollStats();
+pollSystem();
+loadConfigRaw();
+setInterval(pollStats,15000);
+setInterval(pollSystem,30000);
+
+if(SOCKETIO_ENABLED){
+  const sock=io();
+  sock.on('connect',()=>{const dot=document.getElementById('dot');dot.style.background='#00ff88';dot.style.boxShadow='0 0 8px #00ff88';});
+  sock.on('disconnect',()=>{const dot=document.getElementById('dot');dot.style.background='#ff4466';dot.style.boxShadow='0 0 8px #ff4466';});
+  sock.on('new_frame',f=>{
+    addF(f);
+    updMk(f);
+    if(f.source)updSt(f.source,f);
+    renderStations();
+    pollStats();
+  });
+  sock.on('telemetry',()=>pollStats());
+}else{
+  const dot=document.getElementById('dot');
+  dot.style.background='#ffaa00';
+  dot.style.boxShadow='0 0 8px #ffaa00';
+}
+</script>
+</body>
+</html>
