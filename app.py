@@ -258,6 +258,8 @@ def api_system_monitor():
     import json as _json
     journal_unit = SETTINGS["JOURNAL_UNIT"]
 
+    _ansi_only = __import__("re").compile(r"^(\x1b\[[0-9;]*m)+$")
+
     def generate():
         try:
             env = {
@@ -275,11 +277,20 @@ def api_system_monitor():
                 errors="replace",
                 env=env,
             )
+            # Direwolf outputs the ANSI color code on its own line before [ig>tx] data.
+            # Buffer color-only lines and prepend them to the next data line.
+            pending = ""
             for line in proc.stdout:
+                line = line.rstrip("\n")
                 if not line:
                     continue
+                if _ansi_only.match(line):
+                    pending = line  # hold color prefix for next line
+                    continue
+                combined = pending + line
+                pending = ""
                 try:
-                    yield f"data: {_json.dumps(line.rstrip())}\n\n"
+                    yield f"data: {_json.dumps(combined)}\n\n"
                 except GeneratorExit:
                     proc.terminate()
                     return

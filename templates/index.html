@@ -61,6 +61,8 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 .fi:hover{background:var(--b2)}
 .fi.hp{border-left:3px solid var(--g)}
 .fi.np{border-left:3px solid var(--t3)}
+.fi.ip{border-left:3px solid var(--bl)}
+.fi.dp{border-left:3px solid var(--am)}
 @keyframes si{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 .fh{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
 .fc{font-weight:700;color:var(--bl);font-size:12px}
@@ -292,10 +294,16 @@ function updMk(f){
   document.getElementById('mC').textContent=Object.keys(markers).length;
 }
 
+function originClass(f){
+  if(f.lat!=null&&f.lon!=null)return'hp';
+  if(f.origin==='igtx')return'ip';
+  if(f.origin==='rf_digi')return'dp';
+  return'np';
+}
 function addF(f){
-  const list=document.getElementById('fList'),hasPos=f.lat!=null&&f.lon!=null;
+  const list=document.getElementById('fList');
   const item=document.createElement('div');
-  item.className=`fi ${hasPos?'hp':'np'}`;
+  item.className=`fi ${originClass(f)}`;
   item.innerHTML=`<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${fmtT(f.timestamp)}</span></div><div><span class="fty ${tyC(f.data_type)}">${f.data_type||'?'}</span><span class="fcm">${f.comment||f.raw?.substring(0,55)||''}</span></div>${hasPos?`<div class="fco">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} — ${f.origin||'rf'}</div>`:`<div class="fco">${f.origin||'rf'}</div>`}`;
   item.onclick=()=>showDet(f);
   if(hasPos)item.ondblclick=()=>{map.setView([f.lat,f.lon],13);markers[f.source]?.openPopup()};
@@ -488,15 +496,40 @@ function monitorStop(){
   if(monitorES){monitorES.close();monitorES=null;}
   monitorActive=false;
 }
-const _ansiMap={'30':'#556677','31':'#ff4466','32':'#00ff88','33':'#ffaa00','34':'#00aaff','35':'#c864ff','36':'#00ccff','37':'#e8edf3','90':'#556677','91':'#ff6688','92':'#33ff99','93':'#ffbb33','94':'#33bbff','95':'#dd88ff','96':'#33ddff','97':'#ffffff'};
-function ansiToHtml(s){
-  const esc=s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  return esc.replace(/\x1b\[([0-9;]*)m/g,(m,p)=>{
-    const codes=p.split(';');
-    if(codes.includes('0')||codes.includes('')){return'</span>';}
-    for(const c of codes){if(_ansiMap[c])return`<span style="color:${_ansiMap[c]}">`;}
-    return'';
-  });
+// ANSI → HTML : gère 30-37, 90-97 (codes simples) et 38;2;R;G;B (RGB Direwolf)
+const _ansiBasic={'30':'#556677','31':'#ff4466','32':'#00ff88','33':'#ffaa00','34':'#00aaff','35':'#c864ff','36':'#00ccff','37':'#e8edf3','90':'#778899','91':'#ff6688','92':'#33ff99','93':'#ffcc44','94':'#44bbff','95':'#dd88ff','96':'#33ddff','97':'#ffffff'};
+function ansiToHtml(raw){
+  // Split on ANSI escape sequences, keeping them as tokens
+  const parts=raw.split(/(\x1b\[[0-9;]*m)/);
+  let html='';let openSpan=false;
+  for(let i=0;i<parts.length;i++){
+    if(i%2===0){
+      // text segment — HTML-escape it
+      html+=parts[i].replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }else{
+      // ANSI code
+      const code=parts[i].slice(2,-1); // strip \x1b[ and m
+      if(code===''||code==='0'){
+        if(openSpan){html+='</span>';openSpan=false;}
+      }else{
+        const p=code.split(';');
+        let color=null;
+        if(p[0]==='38'&&p[1]==='2'&&p.length>=5){
+          // RGB: 38;2;R;G;B
+          color=`rgb(${p[2]},${p[3]},${p[4]})`;
+        }else if(_ansiBasic[p[0]]){
+          color=_ansiBasic[p[0]];
+        }
+        if(color){
+          if(openSpan)html+='</span>';
+          html+=`<span style="color:${color}">`;
+          openSpan=true;
+        }
+      }
+    }
+  }
+  if(openSpan)html+='</span>';
+  return html;
 }
 
 // ── Terminal (xterm.js) ───────────────────────────────────────────────────────

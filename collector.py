@@ -19,8 +19,10 @@ from aprs_parser import parse_aprs_frame
 from db import SidecarDB
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m|\033\[[0-9;]*m")
-RF_RE = re.compile(r"^\[0(L)?\]\s+(.+)$")
+# [0] rf rx, [0L] local tx, [0H] heard via digi — any channel number
+RF_RE = re.compile(r"^\[(\d+)(L)?(H)?\]\s+(.+)$")
 IG_RE = re.compile(r"^\[ig\]\s+(.+)$")
+IGTX_RE = re.compile(r"^\[ig>tx\]\s+(.+)$")
 
 
 def load_env_file(path: Path) -> dict:
@@ -356,11 +358,11 @@ class JournalCollector:
         parsed["id"] = row_id
         self.state.last_frame = raw_frame[:120]
         self.state.last_frame_time = parsed.get("timestamp")
-        if origin == "rf":
+        if origin in ("rf", "rf_digi"):
             self.state.counts["rf_rx"] += 1
         elif origin == "tx":
             self.state.counts["rf_tx"] += 1
-        elif origin == "is":
+        elif origin in ("is", "igtx"):
             self.state.counts["is_rx"] += 1
         if "beacon" in raw_frame.lower() or parsed.get("source") == self.state.config_cache.get("CALLSIGN", ""):
             self.state.counts["beacons"] += 1
@@ -368,16 +370,26 @@ class JournalCollector:
 
     def _parse_line(self, line: str):
         clean = ANSI_RE.sub("", line.strip())
-        if not clean or "[ig>tx]" in clean:
+        if not clean:
             return
         rf_match = RF_RE.match(clean)
         if rf_match:
-            origin = "tx" if rf_match.group(1) else "rf"
-            self._handle_frame(rf_match.group(2).strip(), origin)
+            # group(2)="L" → tx, group(3)="H" → heard via digi, else rf
+            if rf_match.group(2):
+                origin = "tx"
+            elif rf_match.group(3):
+                origin = "rf_digi"
+            else:
+                origin = "rf"
+            self._handle_frame(rf_match.group(4).strip(), origin)
             return
         ig_match = IG_RE.match(clean)
         if ig_match and ">" in ig_match.group(1):
             self._handle_frame(ig_match.group(1).strip(), "is")
+            return
+        igtx_match = IGTX_RE.match(clean)
+        if igtx_match and ">" in igtx_match.group(1):
+            self._handle_frame(igtx_match.group(1).strip(), "igtx")
 
     def _bootstrap_recent_frames(self):
         try:
