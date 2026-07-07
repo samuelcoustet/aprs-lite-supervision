@@ -24,8 +24,18 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 .hdr-s{display:flex;gap:20px;font-size:11px;color:var(--t2)}
 .hdr-s .v{color:var(--bl);font-weight:600}
 /* Layout */
-.main{display:grid;grid-template-columns:1fr 440px;height:calc(100vh - 48px)}
-@media(max-width:1000px){.main{grid-template-columns:1fr;grid-template-rows:48vh 1fr}}
+.main{display:flex;flex-direction:row;height:calc(100vh - 48px);overflow:hidden}
+.mapc{flex:1 1 0;min-width:200px;position:relative}
+/* Resize handle between map and sidebar */
+.resizer{width:5px;background:var(--bd);cursor:col-resize;flex-shrink:0;transition:background .15s;z-index:10}
+.resizer:hover,.resizer.dragging{background:var(--g)}
+/* Sidebar sizing */
+.sb{width:440px;min-width:0;max-width:80vw;flex-shrink:0;display:flex;flex-direction:column;background:var(--b1);border-left:none;overflow:hidden;transition:width .2s}
+.sb.collapsed{width:0!important;min-width:0}
+/* Toggle button on the resizer */
+.sb-toggle{position:absolute;top:50%;transform:translateY(-50%);left:-1px;width:14px;height:40px;background:var(--b2);border:1px solid var(--bd);border-radius:3px 0 0 3px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--t2);z-index:20;transition:background .15s}
+.sb-toggle:hover{background:var(--g);color:var(--b0)}
+@media(max-width:800px){.main{flex-direction:column}.resizer{width:100%;height:5px;cursor:row-resize}.sb{width:100%!important;max-width:100%;height:40vh;min-height:0}}
 /* Map */
 .mapc{position:relative}
 #map{width:100%;height:100%;background:var(--b0)}
@@ -173,8 +183,13 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
     </div>
   </div>
 
+  <!-- Resize handle -->
+  <div class="resizer" id="resizer">
+    <button class="sb-toggle" id="sbToggle" title="Replier/déplier le volet">❯</button>
+  </div>
+
   <!-- Sidebar -->
-  <div class="sb">
+  <div class="sb" id="sidebar">
     <div class="tabs">
       <button class="tab on" data-t="principal">Principal</button>
       <button class="tab" data-t="config">Config</button>
@@ -645,6 +660,84 @@ if(SOCKETIO_ENABLED){
   sock={emit:()=>{}};
   const dot=document.getElementById('dot');dot.style.background='#ffaa00';dot.style.boxShadow='0 0 8px #ffaa00';
 }
+
+// ── Resize / collapse sidebar ─────────────────────────────────────────────────
+(()=>{
+  const sidebar=document.getElementById('sidebar');
+  const resizer=document.getElementById('resizer');
+  const toggle=document.getElementById('sbToggle');
+  const main=resizer.parentElement;
+  const MIN_W=220, MAX_W=Math.round(window.innerWidth*0.85);
+  let collapsed=false, savedW=440, dragging=false, startX=0, startW=0;
+
+  function setWidth(w){
+    w=Math.max(MIN_W,Math.min(w,Math.round(window.innerWidth*0.85)));
+    sidebar.style.width=w+'px';
+    savedW=w;
+    if(termFit)termFit.fit();
+    map.invalidateSize();
+  }
+
+  function collapse(){
+    collapsed=true;
+    sidebar.classList.add('collapsed');
+    resizer.style.cursor='default';
+    toggle.textContent='❮';
+    toggle.title='Déplier le volet';
+    map.invalidateSize();
+  }
+
+  function expand(){
+    collapsed=false;
+    sidebar.classList.remove('collapsed');
+    sidebar.style.width=savedW+'px';
+    resizer.style.cursor='col-resize';
+    toggle.textContent='❯';
+    toggle.title='Replier le volet';
+    if(termFit)termFit.fit();
+    map.invalidateSize();
+  }
+
+  toggle.onclick=e=>{e.stopPropagation();collapsed?expand():collapse();};
+
+  resizer.addEventListener('mousedown',e=>{
+    if(e.target===toggle||collapsed)return;
+    dragging=true;startX=e.clientX;startW=sidebar.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.style.cursor='col-resize';
+    document.body.style.userSelect='none';
+  });
+
+  document.addEventListener('mousemove',e=>{
+    if(!dragging)return;
+    const delta=startX-e.clientX; // drag left = wider sidebar
+    setWidth(startW+delta);
+  });
+
+  document.addEventListener('mouseup',()=>{
+    if(!dragging)return;
+    dragging=false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor='';
+    document.body.style.userSelect='';
+    // persist
+    try{localStorage.setItem('sidecar_sb_w',savedW);}catch{}
+  });
+
+  // Touch support
+  resizer.addEventListener('touchstart',e=>{
+    if(e.target===toggle||collapsed)return;
+    dragging=true;startX=e.touches[0].clientX;startW=sidebar.offsetWidth;
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!dragging)return;
+    setWidth(startW+(startX-e.touches[0].clientX));
+  },{passive:true});
+  document.addEventListener('touchend',()=>{dragging=false;});
+
+  // Restore saved width
+  try{const w=parseInt(localStorage.getItem('sidecar_sb_w'));if(w>=MIN_W)setWidth(w);}catch{}
+})();
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadFrames();
