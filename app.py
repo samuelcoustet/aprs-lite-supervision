@@ -251,6 +251,7 @@ def main():
             app,
             host=SETTINGS["DASHBOARD_HOST"],
             port=SETTINGS["DASHBOARD_PORT"],
+            allow_unsafe_werkzeug=True,
         )
     else:
         app.run(

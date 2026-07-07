@@ -2,4 +2,3 @@ flask>=3.1
 flask-socketio>=5.4
 gevent>=24.0
 gevent-websocket
-systemd-python>=235; sys_platform == "linux"
