@@ -178,6 +178,104 @@ def get_clock_info() -> dict:
     return info
 
 
+def get_pi_info() -> dict:
+    import platform
+    info: dict = {}
+    try:
+        info["model"] = Path("/proc/device-tree/model").read_text().strip().rstrip("\x00")
+    except Exception:
+        info["model"] = "Raspberry Pi (inconnu)"
+    try:
+        r = subprocess.run(["lsb_release", "-ds"], capture_output=True, text=True, timeout=3)
+        info["os"] = r.stdout.strip()
+    except Exception:
+        info["os"] = platform.platform()
+    info["kernel"] = platform.release()
+    info["arch"] = platform.machine()
+    info["hostname"] = socket.gethostname()
+    try:
+        lines = Path("/proc/meminfo").read_text().splitlines()
+        mem = {l.split(":")[0]: int(l.split()[1]) for l in lines if ":" in l and len(l.split()) >= 2}
+        info["mem_total_mb"] = round(mem.get("MemTotal", 0) / 1024)
+        info["mem_free_mb"] = round(mem.get("MemAvailable", 0) / 1024)
+        info["mem_used_mb"] = info["mem_total_mb"] - info["mem_free_mb"]
+    except Exception:
+        info["mem_total_mb"] = info["mem_free_mb"] = info["mem_used_mb"] = None
+    info["cpu_temp"] = get_cpu_temp()
+    info["uptime_seconds"] = get_uptime_seconds()
+    try:
+        st = os.statvfs("/")
+        info["disk_total_gb"] = round(st.f_blocks * st.f_frsize / 1e9, 1)
+        info["disk_free_gb"] = round(st.f_bavail * st.f_frsize / 1e9, 1)
+        info["disk_used_gb"] = round(info["disk_total_gb"] - info["disk_free_gb"], 1)
+    except Exception:
+        info["disk_total_gb"] = info["disk_free_gb"] = info["disk_used_gb"] = None
+    try:
+        r = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=3)
+        val = r.stdout.strip().replace("throttled=", "")
+        throttled = int(val, 16)
+        info["throttled"] = bool(throttled)
+        info["throttled_hex"] = val
+        flags = []
+        if throttled & 0x1: flags.append("under-voltage")
+        if throttled & 0x2: flags.append("arm-freq-capped")
+        if throttled & 0x4: flags.append("currently-throttled")
+        if throttled & 0x10000: flags.append("under-voltage-occurred")
+        if throttled & 0x20000: flags.append("arm-freq-capped-occurred")
+        if throttled & 0x40000: flags.append("throttling-occurred")
+        info["throttle_flags"] = flags
+    except Exception:
+        info["throttled"] = None
+    try:
+        r = subprocess.run(["vcgencmd", "measure_clock", "arm"], capture_output=True, text=True, timeout=3)
+        val = r.stdout.strip().split("=")[-1]
+        info["arm_freq_mhz"] = round(int(val) / 1e6)
+    except Exception:
+        info["arm_freq_mhz"] = None
+    try:
+        r = subprocess.run(["vcgencmd", "get_mem", "gpu"], capture_output=True, text=True, timeout=3)
+        info["gpu_mem_mb"] = r.stdout.strip().replace("gpu=", "").replace("M", "")
+    except Exception:
+        info["gpu_mem_mb"] = None
+    return info
+
+
+def get_audio_info() -> dict:
+    info: dict = {"playback": [], "capture": [], "aioc": None}
+    try:
+        r = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            if line.startswith("card "):
+                info["playback"].append(line.strip())
+                if "All-In-One" in line or "aioc" in line.lower() or "AIOC" in line:
+                    info["aioc"] = {"playback_line": line.strip()}
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(["arecord", "-l"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            if line.startswith("card "):
+                info["capture"].append(line.strip())
+                if "All-In-One" in line or "aioc" in line.lower() or "AIOC" in line:
+                    if info["aioc"] is None:
+                        info["aioc"] = {}
+                    info["aioc"]["capture_line"] = line.strip()
+                    m = __import__("re").search(r"card (\d+):", line)
+                    if m:
+                        info["aioc"]["hw"] = f"hw:{m.group(1)},0"
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(["lsusb"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            if "All-In-One" in line or "aioc" in line.lower() or "C-Media" in line:
+                info["usb_device"] = line.strip()
+                break
+    except Exception:
+        pass
+    return info
+
+
 def system_snapshot(service_name: str) -> dict:
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),

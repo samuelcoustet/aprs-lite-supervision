@@ -14,6 +14,7 @@
 :root{--b0:#0a0e14;--b1:#111820;--b2:#1a2230;--b3:#141c28;--g:#00ff88;--g2:#00cc6a;--bl:#00aaff;--am:#ffaa00;--rd:#ff4466;--t1:#e8edf3;--t2:#8899aa;--t3:#556677;--bd:#1e2a3a}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1);overflow:hidden;height:100vh}
+/* Header */
 .hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:var(--b1);border-bottom:1px solid var(--bd);height:48px}
 .hdr-l{display:flex;align-items:center;gap:10px}
 .logo{font-family:'Exo 2',sans-serif;font-weight:800;font-size:17px;color:var(--g);letter-spacing:2px}
@@ -22,8 +23,10 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 @keyframes pu{0%,100%{opacity:1}50%{opacity:.4}}
 .hdr-s{display:flex;gap:20px;font-size:11px;color:var(--t2)}
 .hdr-s .v{color:var(--bl);font-weight:600}
-.main{display:grid;grid-template-columns:1fr 420px;height:calc(100vh - 48px)}
-@media(max-width:980px){.main{grid-template-columns:1fr;grid-template-rows:48vh 1fr}}
+/* Layout */
+.main{display:grid;grid-template-columns:1fr 440px;height:calc(100vh - 48px)}
+@media(max-width:1000px){.main{grid-template-columns:1fr;grid-template-rows:48vh 1fr}}
+/* Map */
 .mapc{position:relative}
 #map{width:100%;height:100%;background:var(--b0)}
 .leaflet-container{background:var(--b0)!important}
@@ -34,19 +37,30 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 .tl-pill{background:rgba(10,14,20,.85);border-radius:4px;padding:4px 8px;font-size:10px}
 .map-ctrl{position:absolute;top:10px;right:10px;z-index:1000}
 .map-ctrl select{background:rgba(10,14,20,.9);color:var(--t1);border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-size:11px;font-family:inherit}
+/* Sidebar */
 .sb{display:flex;flex-direction:column;background:var(--b1);border-left:1px solid var(--bd);overflow:hidden}
-.tabs{display:flex;border-bottom:1px solid var(--bd);overflow-x:auto}
-.tab{padding:9px 10px;background:none;border:none;color:var(--t3);font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
+.tabs{display:flex;border-bottom:1px solid var(--bd);overflow-x:auto;flex-shrink:0}
+.tab{padding:9px 9px;background:none;border:none;color:var(--t3);font-family:'Exo 2',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
 .tab.on{color:var(--g);border-bottom-color:var(--g)}
 .tab:hover{color:var(--t1);background:var(--b2)}
-.tc{display:none;flex:1;overflow-y:auto}
-.tc.on{display:flex;flex-direction:column}
+.tc{display:none;flex:1;overflow:hidden;flex-direction:column}
+.tc.on{display:flex}
+/* Principal sub-tabs */
+.ptabs{display:flex;border-bottom:1px solid var(--bd);background:var(--b0);flex-shrink:0}
+.ptab{padding:6px 12px;background:none;border:none;color:var(--t3);font-family:'Exo 2',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+.ptab.on{color:var(--g);border-bottom-color:var(--g)}
+.ptab:hover{color:var(--t1)}
+.pview{display:none;flex:1;flex-direction:column;overflow:hidden;min-height:0}
+.pview.on{display:flex}
+/* RF strip */
+.rf-strip{display:flex;gap:6px;padding:6px 10px;background:var(--b0);border-bottom:1px solid var(--bd);flex-wrap:wrap;flex-shrink:0}
+.rf-pill{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;background:var(--b3);border:1px solid var(--bd)}
+/* Frames */
 .fl{flex:1;overflow-y:auto}
-/* Principal — frames */
 .fi{padding:7px 10px;border-bottom:1px solid var(--bd);cursor:pointer;transition:background .15s;animation:si .3s ease-out}
 .fi:hover{background:var(--b2)}
-.fi.hp{border-left:3px solid var(--g);border-radius:0}
-.fi.np{border-left:3px solid var(--t3);border-radius:0}
+.fi.hp{border-left:3px solid var(--g)}
+.fi.np{border-left:3px solid var(--t3)}
 @keyframes si{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 .fh{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
 .fc{font-weight:700;color:var(--bl);font-size:12px}
@@ -55,26 +69,22 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 .ty-pos{background:rgba(0,255,136,.15);color:var(--g)}.ty-msg{background:rgba(0,170,255,.15);color:var(--bl)}.ty-sts{background:rgba(255,170,0,.15);color:var(--am)}.ty-wx{background:rgba(100,200,255,.15);color:#64c8ff}.ty-me{background:rgba(200,100,255,.15);color:#c864ff}.ty-unk{background:rgba(85,102,119,.15);color:var(--t3)}.ty-q{background:rgba(255,68,102,.15);color:var(--rd)}
 .fcm{font-size:10px;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fco{font-size:9px;color:var(--g2);margin-top:1px}
-.dp{display:none;padding:10px;background:var(--b3);border-top:1px solid var(--g)}
+.dp{display:none;padding:10px;background:var(--b3);border-top:1px solid var(--g);flex-shrink:0}
 .dp.vis{display:block}
 .dt{font-family:'Exo 2',sans-serif;font-size:13px;font-weight:700;color:var(--g);margin-bottom:6px}
 .dr{display:flex;justify-content:space-between;padding:2px 0;font-size:10px;border-bottom:1px solid rgba(30,42,58,.5);gap:8px}
 .dlb{color:var(--t3)}.dval{color:var(--t1);text-align:right;max-width:220px;word-break:break-word}
 .raw{margin-top:6px;padding:6px;background:var(--b0);border-radius:4px;font-size:9px;color:var(--am);word-break:break-all;border:1px solid var(--bd)}
+/* Monitor log */
+.mon-log{flex:1;overflow-y:auto;padding:6px 8px;font-size:10px;line-height:1.5;background:var(--b0);font-family:'JetBrains Mono',monospace}
+.mon-line{white-space:pre-wrap;word-break:break-all;border-bottom:1px solid rgba(30,42,58,.3);padding:1px 0}
 /* Stations */
-.sg{padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.sg{padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:5px;overflow-y:auto}
 .sc{padding:5px 8px;background:var(--b3);border:1px solid var(--bd);border-radius:5px;font-size:11px;color:var(--bl);text-align:center;cursor:pointer;transition:all .15s}
 .sc:hover{border-color:var(--bl);background:rgba(0,170,255,.08)}
 .sc .cnt{font-size:9px;color:var(--t3);display:block}
-/* Principal sub-toggle */
-.ptabs{display:flex;border-bottom:1px solid var(--bd);background:var(--b0)}
-.ptab{padding:6px 12px;background:none;border:none;color:var(--t3);font-family:'Exo 2',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
-.ptab.on{color:var(--g);border-bottom-color:var(--g)}
-.ptab:hover{color:var(--t1)}
-.pview{display:none;flex:1;flex-direction:column;overflow:hidden}
-.pview.on{display:flex}
-/* Shared panels */
-.sys-panel,.cfg-panel,.wifi-panel,.clock-panel,.meteo-panel{padding:10px;overflow-y:auto}
+/* Generic panels */
+.panel{padding:10px;overflow-y:auto;flex:1}
 .sys-section{margin-bottom:14px}
 .sys-title{font-family:'Exo 2',sans-serif;font-size:12px;font-weight:600;color:var(--t2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
 .svc-row{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:var(--b3);border-radius:4px;margin-bottom:3px;font-size:11px;gap:8px}
@@ -90,29 +100,45 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
 .wx-item{background:var(--b0);border-radius:4px;padding:5px 8px;font-size:11px}
 .wx-lbl{font-size:9px;color:var(--t3);display:block;text-transform:uppercase;letter-spacing:.4px}
 .wx-val{color:var(--t1);font-weight:600}
+/* Audio */
+.audio-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:8px}
+.audio-item{background:var(--b3);border-radius:5px;padding:7px;font-size:10px}
+.audio-lbl{color:var(--t3);margin-bottom:2px;font-size:9px;text-transform:uppercase}
+.audio-ok{color:var(--g);font-weight:600}.audio-err{color:var(--rd);font-weight:600}
+.audio-sub{font-size:9px;color:var(--t3);margin-top:2px}
+/* Terminal */
+.term-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--b0);border-bottom:1px solid var(--bd);flex-shrink:0}
+.term-status{font-size:10px;color:var(--t3)}
+.btn{padding:3px 10px;border:1px solid var(--bd);border-radius:4px;background:var(--b3);color:var(--t2);font-family:'Exo 2',sans-serif;font-size:10px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--bl);color:var(--bl)}
+.btn-g{border-color:var(--g);color:var(--g)}.btn-g:hover{background:rgba(0,255,136,.08)}
+.btn-r{border-color:var(--rd);color:var(--rd)}.btn-r:hover{background:rgba(255,68,102,.08)}
+#terminal-container{flex:1;overflow:hidden;background:#0a0e14;padding:4px}
+/* Pi info progress */
+.bar-wrap{background:var(--b0);border-radius:3px;height:6px;overflow:hidden;margin-top:3px}
+.bar-fill{height:100%;border-radius:3px;transition:width .5s}
 /* Stats bar */
-.stats-bar{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--bd)}
+.stats-bar{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--bd);flex-shrink:0}
 .stats-bar>div{padding:8px 12px;border-right:1px solid var(--bd);background:var(--b1)}
 .stats-bar>div:last-child{border-right:none}
 .stats-bar .sl{font-size:10px;color:var(--t3)}.stats-bar .sv{font-size:16px;font-weight:600}
+/* Scrollbar */
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--b1)}::-webkit-scrollbar-thumb{background:var(--b2);border-radius:3px}
+/* Map markers */
 .aprs-mk{background:none;border:none}
 .mk-dot{width:10px;height:10px;background:var(--g);border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(0,255,136,.5)}
 .mk-lbl{position:absolute;top:12px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 2px #000;pointer-events:none}
 .leaflet-popup-content-wrapper{background:var(--b3)!important;color:var(--t1)!important;border:1px solid var(--g)!important;border-radius:6px!important;font-family:'JetBrains Mono',monospace!important;box-shadow:0 0 15px rgba(0,255,136,.12)!important}
-.leaflet-popup-tip{background:var(--b3)!important;border:1px solid var(--g)!important}
+.leaflet-popup-tip{background:var(--b3)!important}
 .pp-c{font-size:13px;font-weight:700;color:var(--g);margin-bottom:3px}
 .pp-i{font-size:10px;color:var(--t2);line-height:1.5}
-/* RF status strip inside Principal */
-.rf-strip{display:flex;gap:6px;padding:6px 10px;background:var(--b0);border-bottom:1px solid var(--bd);flex-wrap:wrap}
-.rf-pill{padding:3px 8px;border-radius:4px;font-size:10px;font-weight:600;background:var(--b3);border:1px solid var(--bd)}
 </style>
 </head>
 <body>
 <header class="hdr">
   <div class="hdr-l">
     <div class="dot" id="dot"></div>
-    <div class="logo">APRS LITE SIDECAR<span>{{ config.callsign }} - read only</span></div>
+    <div class="logo">APRS LITE SIDECAR<span>{{ config.callsign }} — read only</span></div>
   </div>
   <div class="hdr-s">
     <div>TRAMES <span class="v" id="hT">0</span></div>
@@ -121,6 +147,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
   </div>
 </header>
 <div class="main">
+  <!-- Carte Leaflet -->
   <div class="mapc">
     <div id="map"></div>
     <div class="mov">
@@ -143,66 +170,92 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
       </select>
     </div>
   </div>
+
+  <!-- Sidebar -->
   <div class="sb">
-    <!-- Onglets principaux (miroir TUI aprs-lite) -->
     <div class="tabs">
       <button class="tab on" data-t="principal">Principal</button>
       <button class="tab" data-t="config">Config</button>
       <button class="tab" data-t="wifi">WiFi</button>
       <button class="tab" data-t="horloge">Horloge</button>
       <button class="tab" data-t="meteo">Météo</button>
+      <button class="tab" data-t="systeme">Système</button>
+      <button class="tab" data-t="terminal">Terminal</button>
     </div>
 
-    <!-- PRINCIPAL : log des trames + stations -->
+    <!-- ══ PRINCIPAL ══ -->
     <div class="tc on" id="t-principal">
-      <!-- RF status strip -->
       <div class="rf-strip">
         <span class="rf-pill">RF-RX <span id="rfRx" style="color:var(--g)">0</span></span>
         <span class="rf-pill">RF-TX <span id="rfTx" style="color:var(--am)">0</span></span>
         <span class="rf-pill">IS-RX <span id="rfIs" style="color:var(--bl)">0</span></span>
         <span class="rf-pill">Beacons <span id="rfBcn" style="color:var(--t2)">0</span></span>
       </div>
-      <!-- Sub-onglets Trames / Stations -->
       <div class="ptabs">
         <button class="ptab on" data-p="frames">Trames</button>
         <button class="ptab" data-p="stations">Stations</button>
+        <button class="ptab" data-p="monitor">Monitor</button>
       </div>
+      <!-- Trames -->
       <div class="pview on" id="pv-frames">
         <div class="dp" id="fDet"></div>
         <div class="fl" id="fList"></div>
       </div>
+      <!-- Stations -->
       <div class="pview" id="pv-stations">
         <div class="sg" id="sGrid"></div>
       </div>
+      <!-- Monitor (SSE journalctl) -->
+      <div class="pview" id="pv-monitor" style="flex-direction:column">
+        <div class="mon-log" id="monLog"></div>
+      </div>
     </div>
 
-    <!-- CONFIG -->
+    <!-- ══ CONFIG ══ -->
     <div class="tc" id="t-config">
-      <div class="cfg-panel"><pre id="cfgRaw">Chargement…</pre></div>
+      <div class="panel"><pre id="cfgRaw">Chargement…</pre></div>
     </div>
 
-    <!-- WIFI -->
+    <!-- ══ WIFI ══ -->
     <div class="tc" id="t-wifi">
-      <div class="wifi-panel" id="wifiPanel">Chargement…</div>
+      <div class="panel" id="wifiPanel">Chargement…</div>
     </div>
 
-    <!-- HORLOGE -->
+    <!-- ══ HORLOGE ══ -->
     <div class="tc" id="t-horloge">
-      <div class="clock-panel" id="clockPanel">Chargement…</div>
+      <div class="panel" id="clockPanel">Chargement…</div>
     </div>
 
-    <!-- MÉTÉO -->
+    <!-- ══ MÉTÉO ══ -->
     <div class="tc" id="t-meteo">
-      <div class="meteo-panel" id="meteoPanel">Chargement…</div>
+      <div class="panel" id="meteoPanel">Chargement…</div>
+    </div>
+
+    <!-- ══ SYSTÈME (Pi info + Audio) ══ -->
+    <div class="tc" id="t-systeme">
+      <div class="panel" id="systemePanel">Chargement…</div>
+    </div>
+
+    <!-- ══ TERMINAL ══ -->
+    <div class="tc" id="t-terminal" style="flex-direction:column">
+      <div class="term-bar">
+        <button class="btn btn-g" id="termStartBtn" onclick="termStart()">▶ Démarrer</button>
+        <button class="btn btn-r" id="termStopBtn" style="display:none" onclick="termStop()">■ Arrêter</button>
+        <button class="btn" onclick="termClear()">⌫ Effacer</button>
+        <span class="term-status" id="termStatus">Inactif</span>
+      </div>
+      <div id="terminal-container"></div>
     </div>
   </div>
 </div>
+
 <div class="stats-bar">
   <div><div class="sl">Frames / hour</div><div class="sv" id="sbFph">--</div></div>
   <div><div class="sl">Last frame</div><div class="sv" id="sbLast">--</div></div>
   <div><div class="sl">RF RX / TX / IS</div><div class="sv" id="sbCounts">--</div></div>
   <div><div class="sl">CPU / RAM</div><div class="sv" id="sbCpu">-- / --</div></div>
 </div>
+
 <script>
 const CONFIG={{ config|tojson }};
 const SOCKETIO_ENABLED={{ 'true' if socketio_enabled else 'false' }};
@@ -217,44 +270,33 @@ const startLat=parseFloat(CONFIG.lat||'42.9783');
 const startLon=parseFloat(CONFIG.lon||'-0.7493');
 const map=L.map('map',{zoomControl:true,attributionControl:false}).setView([startLat,startLon],10);
 L.control.attribution({prefix:false,position:'bottomleft'}).addTo(map);
-
-function switchMap(k){
-  if(curLayer)map.removeLayer(curLayer);
-  const t=TILES[k]||TILES.opentopo;
-  curLayer=L.tileLayer(t[0],{maxZoom:18,subdomains:k==='satellite'?'a':'abc'}).addTo(map);
-}
+function switchMap(k){if(curLayer)map.removeLayer(curLayer);const t=TILES[k]||TILES.opentopo;curLayer=L.tileLayer(t[0],{maxZoom:18,subdomains:k==='satellite'?'a':'abc'}).addTo(map);}
 switchMap('opentopo');
 
+// ── Markers / state ──────────────────────────────────────────────────────────
 const markers={},stationData={},seen=new Set();
-let totalFrames=0;
-
 function mkIcon(c,n){const col=n?'#00ff88':'#00aaff';return L.divIcon({className:'aprs-mk',html:`<div class="mk-dot" style="background:${col};box-shadow:0 0 8px ${col}80"></div><div class="mk-lbl">${c}</div>`,iconSize:[10,10],iconAnchor:[5,5]})}
 function tyC(t){return{position:'ty-pos',position_ts:'ty-pos',message:'ty-msg',message_ack:'ty-msg',status:'ty-sts',weather:'ty-wx','mic-e':'ty-me',query:'ty-q'}[t]||'ty-unk'}
 function fmtT(ts){try{return new Date(ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}catch{return'--:--'}}
 function fmtAgo(ts){if(!ts)return'--';const d=Math.floor((Date.now()-new Date(ts).getTime())/1000);if(d<60)return d+'s';if(d<3600)return Math.floor(d/60)+'min';return Math.floor(d/3600)+'h'}
 function fmtUptime(s){if(!s)return'--';const d=Math.floor(s/86400),h=Math.floor((s%86400)/3600),m=Math.floor((s%3600)/60);return d>0?`${d}j ${h}h`:`${h}h ${m}m`}
 function pct(v){return v==null?'--':`${Math.round(v)}%`}
-function temp(v){return v==null?'--C':`${v.toFixed(1)}C`}
+function tempC(v){return v==null?'--':`${v.toFixed(1)}°C`}
 
 function updMk(f){
   if(f.lat==null||f.lon==null)return;
   const c=f.source||f.callsign;if(!c)return;
   if(markers[c]){markers[c].setLatLng([f.lat,f.lon]);markers[c].setIcon(mkIcon(c,true))}
-  else{
-    const m=L.marker([f.lat,f.lon],{icon:mkIcon(c,true)}).addTo(map);
-    m.bindPopup(`<div class="pp-c">${c}</div><div class="pp-i">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}<br>${f.comment||f.last_comment||''}<br>${f.origin||''}</div>`,{maxWidth:240});
-    markers[c]=m;
-  }
+  else{const m=L.marker([f.lat,f.lon],{icon:mkIcon(c,true)}).addTo(map);m.bindPopup(`<div class="pp-c">${c}</div><div class="pp-i">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}<br>${f.comment||''}<br>${f.origin||''}</div>`,{maxWidth:240});markers[c]=m;}
   setTimeout(()=>{if(markers[c])markers[c].setIcon(mkIcon(c,false))},5000);
   document.getElementById('mC').textContent=Object.keys(markers).length;
 }
 
 function addF(f){
-  const list=document.getElementById('fList');
+  const list=document.getElementById('fList'),hasPos=f.lat!=null&&f.lon!=null;
   const item=document.createElement('div');
-  const hasPos=f.lat!=null&&f.lon!=null;
   item.className=`fi ${hasPos?'hp':'np'}`;
-  item.innerHTML=`<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${fmtT(f.timestamp)}</span></div><div><span class="fty ${tyC(f.data_type)}">${f.data_type||'?'}</span><span class="fcm">${f.comment||f.raw?.substring(0,55)||''}</span></div>${hasPos?`<div class="fco">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} - ${f.origin||'rf'}</div>`:`<div class="fco">${f.origin||'rf'}</div>`}`;
+  item.innerHTML=`<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${fmtT(f.timestamp)}</span></div><div><span class="fty ${tyC(f.data_type)}">${f.data_type||'?'}</span><span class="fcm">${f.comment||f.raw?.substring(0,55)||''}</span></div>${hasPos?`<div class="fco">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} — ${f.origin||'rf'}</div>`:`<div class="fco">${f.origin||'rf'}</div>`}`;
   item.onclick=()=>showDet(f);
   if(hasPos)item.ondblclick=()=>{map.setView([f.lat,f.lon],13);markers[f.source]?.openPopup()};
   list.prepend(item);
@@ -264,39 +306,22 @@ function addF(f){
 function showDet(f){
   const panel=document.getElementById('fDet');
   panel.className='dp vis';
-  const rows=[['Source',f.source],['Destination',f.destination],['Path',f.path||'-'],['Type',f.data_type],['Origin',f.origin||'-'],['Lat',f.lat!=null?f.lat.toFixed(5):'-'],['Lon',f.lon!=null?f.lon.toFixed(5):'-'],['Symbol',f.symbol||'-'],['Speed',f.speed!=null?f.speed+' kn':'-'],['Course',f.course!=null?f.course+' deg':'-'],['Altitude',f.altitude!=null?f.altitude+' ft':'-'],['Comment',f.comment||'-']].map(([l,v])=>`<div class="dr"><span class="dlb">${l}</span><span class="dval">${v}</span></div>`).join('');
+  const rows=[['Source',f.source],['Destination',f.destination],['Path',f.path||'-'],['Type',f.data_type],['Origin',f.origin||'-'],['Lat',f.lat!=null?f.lat.toFixed(5):'-'],['Lon',f.lon!=null?f.lon.toFixed(5):'-'],['Symbol',f.symbol||'-'],['Speed',f.speed!=null?f.speed+' kn':'-'],['Course',f.course!=null?f.course+'°':'-'],['Altitude',f.altitude!=null?f.altitude+' ft':'-'],['Comment',f.comment||'-']].map(([l,v])=>`<div class="dr"><span class="dlb">${l}</span><span class="dval">${v??'-'}</span></div>`).join('');
   panel.innerHTML=`<div class="dt">${f.source||'?'}</div>${rows}<div class="raw">${f.raw||''}</div>`;
 }
 
-function updSt(c,f){
-  if(!seen.has(c)){seen.add(c);stationData[c]={count:0}}
-  stationData[c].count=(stationData[c].count||0)+1;
-  stationData[c].last=f;
-}
-
+function updSt(c,f){if(!seen.has(c)){seen.add(c);stationData[c]={count:0}}stationData[c].count=(stationData[c].count||0)+1;stationData[c].last=f;}
 function renderStations(){
-  const grid=document.getElementById('sGrid');
-  grid.innerHTML='';
-  const sorted=Object.entries(stationData).sort((a,b)=>(b[1].count||0)-(a[1].count||0));
-  for(const [c,d] of sorted){
-    const cell=document.createElement('div');
-    cell.className='sc';
-    const last=d.last||{};
-    cell.innerHTML=`${c}<span class="cnt">${d.count} frames${last.origin?` - ${last.origin}`:''}</span>`;
+  const grid=document.getElementById('sGrid');grid.innerHTML='';
+  Object.entries(stationData).sort((a,b)=>(b[1].count||0)-(a[1].count||0)).forEach(([c,d])=>{
+    const cell=document.createElement('div');cell.className='sc';
+    cell.innerHTML=`${c}<span class="cnt">${d.count} frames${(d.last?.origin)?` — ${d.last.origin}`:''}</span>`;
     cell.onclick=()=>{if(markers[c]){map.setView(markers[c].getLatLng(),13);markers[c].openPopup()}};
     grid.appendChild(cell);
-  }
-}
-
-function serviceClass(status){
-  if(status==='active')return'svc-active';
-  if(status==='failed')return'svc-failed';
-  if(status==='unknown')return'svc-unknown';
-  return'svc-inactive';
+  });
 }
 
 function updateStats(stats){
-  totalFrames=stats.frames_total||0;
   document.getElementById('hT').textContent=stats.frames_total||0;
   document.getElementById('hS').textContent=stats.stations_total||0;
   document.getElementById('hU').textContent=fmtUptime(stats.uptime_seconds);
@@ -309,29 +334,31 @@ function updateStats(stats){
   document.getElementById('rfTx').textContent=counts.rf_tx||0;
   document.getElementById('rfIs').textContent=counts.is_rx||0;
   document.getElementById('rfBcn').textContent=counts.beacons||0;
-  document.getElementById('tlT').textContent=temp(stats.cpu_temp);
+  document.getElementById('tlT').textContent=tempC(stats.cpu_temp);
   document.getElementById('tlR').textContent=`RAM ${pct(stats.ram_usage)}`;
   document.getElementById('tlD').textContent=`DISK ${pct(stats.disk_usage)}`;
-  document.getElementById('tlL').textContent=stats.last_error?'warn':`load ${stats.load_avg_1m!=null?stats.load_avg_1m:'--'}`;
+  document.getElementById('tlL').textContent=stats.last_error?'⚠ warn':`load ${stats.load_avg_1m??'--'}`;
   document.getElementById('ipAddr').textContent=stats.primary_ip||'--';
   const dw=document.getElementById('dwStatus');
   dw.textContent=stats.direwolf_status||'--';
-  dw.style.color=stats.direwolf_status==='active'?'#00ff88':(stats.direwolf_status==='failed'?'#ff4466':'#ffaa00');
+  dw.style.color=stats.direwolf_status==='active'?'#00ff88':stats.direwolf_status==='failed'?'#ff4466':'#ffaa00';
 }
 
+// ── WiFi ─────────────────────────────────────────────────────────────────────
 function renderWifi(data){
   let html='<div class="sys-section"><div class="sys-title">Réseau</div>';
   html+=`<div class="kv"><div class="k">Hostname</div><div class="v">${data.hostname||'--'}</div></div>`;
   html+=`<div class="kv"><div class="k">IP principale</div><div class="v">${data.primary_ip||'--'}</div></div>`;
-  if(data.wifi&&data.wifi.ssid){
-    html+='</div><div class="sys-section"><div class="sys-title">WiFi</div>';
+  html+='</div>';
+  if(data.wifi?.ssid){
+    html+='<div class="sys-section"><div class="sys-title">WiFi</div>';
     html+=`<div class="kv"><div class="k">SSID</div><div class="v">${data.wifi.ssid}</div></div>`;
     if(data.wifi.bssid)html+=`<div class="kv"><div class="k">BSSID</div><div class="v">${data.wifi.bssid}</div></div>`;
     if(data.wifi.signal_dbm)html+=`<div class="kv"><div class="k">Signal</div><div class="v">${data.wifi.signal_dbm} dBm</div></div>`;
     if(data.wifi.tx_bitrate)html+=`<div class="kv"><div class="k">Débit TX</div><div class="v">${data.wifi.tx_bitrate}</div></div>`;
+    html+='</div>';
   }
-  html+='</div>';
-  if(data.interfaces&&data.interfaces.length){
+  if(data.interfaces?.length){
     html+='<div class="sys-section"><div class="sys-title">Interfaces</div>';
     for(const iface of data.interfaces){
       if(iface.name==='lo')continue;
@@ -343,16 +370,15 @@ function renderWifi(data){
   document.getElementById('wifiPanel').innerHTML=html;
 }
 
+// ── Horloge ──────────────────────────────────────────────────────────────────
 function renderClock(data){
   const ntpOk=data.ntp_sync;
   let html='<div class="sys-section"><div class="sys-title">Heure système</div>';
-  const now=data.now?new Date(data.now).toLocaleString('fr-FR'):'--';
-  html+=`<div class="kv"><div class="k">Heure UTC</div><div class="v">${now}</div></div>`;
+  html+=`<div class="kv"><div class="k">Heure UTC</div><div class="v">${data.now?new Date(data.now).toLocaleString('fr-FR'):'--'}</div></div>`;
   html+=`<div class="kv"><div class="k">Timezone</div><div class="v">${data.timezone||'--'}</div></div>`;
   html+=`<div class="kv"><div class="k">Uptime</div><div class="v">${fmtUptime(data.uptime_seconds)}</div></div>`;
-  html+='</div>';
-  html+='<div class="sys-section"><div class="sys-title">NTP</div>';
-  html+=`<div class="kv"><div class="k">Synchronisé</div><div class="v" style="color:${ntpOk?'var(--g)':'var(--rd)'}">${ntpOk?'Oui':'Non'}</div></div>`;
+  html+='</div><div class="sys-section"><div class="sys-title">NTP</div>';
+  html+=`<div class="kv"><div class="k">Synchronisé</div><div class="v" style="color:${ntpOk?'var(--g)':'var(--rd)'}">${ntpOk?'✓ Oui':'✗ Non'}</div></div>`;
   if(data.ntp_enabled!=null)html+=`<div class="kv"><div class="k">NTP activé</div><div class="v">${data.ntp_enabled?'Oui':'Non'}</div></div>`;
   if(data.ntp_server)html+=`<div class="kv"><div class="k">Serveur</div><div class="v">${data.ntp_server}</div></div>`;
   if(data.ntp_poll_s)html+=`<div class="kv"><div class="k">Poll</div><div class="v">${data.ntp_poll_s} s</div></div>`;
@@ -360,68 +386,187 @@ function renderClock(data){
   document.getElementById('clockPanel').innerHTML=html;
 }
 
+// ── Météo ─────────────────────────────────────────────────────────────────────
 function renderMeteo(frames){
   const panel=document.getElementById('meteoPanel');
-  if(!frames||!frames.length){panel.innerHTML='<div style="padding:16px;color:var(--t3);text-align:center">Aucune trame météo reçue</div>';return;}
+  if(!frames?.length){panel.innerHTML='<div style="padding:16px;color:var(--t3);text-align:center">Aucune trame météo reçue</div>';return;}
   let html='<div class="sys-section"><div class="sys-title">Trames weather APRS</div>';
   for(const f of frames.slice(0,10)){
-    html+=`<div class="wx-card">`;
-    html+=`<div class="wx-src">${f.source||'?'} <span style="font-size:10px;color:var(--t3);font-weight:400">${fmtT(f.timestamp)}</span></div>`;
-    html+=`<div class="wx-grid">`;
+    html+=`<div class="wx-card"><div class="wx-src">${f.source||'?'} <span style="font-size:10px;color:var(--t3);font-weight:400">${fmtT(f.timestamp)}</span></div><div class="wx-grid">`;
     if(f.temperature!=null)html+=`<div class="wx-item"><span class="wx-lbl">Température</span><span class="wx-val">${f.temperature} °C</span></div>`;
     if(f.humidity!=null)html+=`<div class="wx-item"><span class="wx-lbl">Humidité</span><span class="wx-val">${f.humidity} %</span></div>`;
     if(f.pressure!=null)html+=`<div class="wx-item"><span class="wx-lbl">Pression</span><span class="wx-val">${f.pressure} hPa</span></div>`;
     if(f.wind_speed!=null)html+=`<div class="wx-item"><span class="wx-lbl">Vent</span><span class="wx-val">${f.wind_speed} kn ${f.wind_dir!=null?f.wind_dir+'°':''}</span></div>`;
     if(f.rain_1h!=null)html+=`<div class="wx-item"><span class="wx-lbl">Pluie 1h</span><span class="wx-val">${f.rain_1h} mm</span></div>`;
     if(f.comment)html+=`<div class="wx-item" style="grid-column:1/-1"><span class="wx-lbl">Commentaire</span><span class="wx-val" style="font-size:10px">${f.comment}</span></div>`;
-    html+=`</div></div>`;
+    html+='</div></div>';
   }
   html+='</div>';
-  panel.innerHTML=html;
+  document.getElementById('meteoPanel').innerHTML=html;
 }
 
-function loadConfigRaw(){
-  fetch('/api/system/config/raw').then(r=>r.text()).then(txt=>{
-    document.getElementById('cfgRaw').textContent=txt||'# vide';
-  }).catch(()=>{document.getElementById('cfgRaw').textContent='Impossible de charger la config';});
+// ── Système (Pi + Audio) ─────────────────────────────────────────────────────
+function renderSysteme(pi, audio){
+  let html='<div class="sys-section"><div class="sys-title">Raspberry Pi</div>';
+  html+=`<div class="kv"><div class="k">Modèle</div><div class="v">${pi.model||'--'}</div></div>`;
+  html+=`<div class="kv"><div class="k">OS</div><div class="v">${pi.os||'--'}</div></div>`;
+  html+=`<div class="kv"><div class="k">Noyau</div><div class="v">${pi.kernel||'--'}</div></div>`;
+  html+=`<div class="kv"><div class="k">Archi</div><div class="v">${pi.arch||'--'}</div></div>`;
+  if(pi.arm_freq_mhz)html+=`<div class="kv"><div class="k">Freq ARM</div><div class="v">${pi.arm_freq_mhz} MHz</div></div>`;
+  if(pi.gpu_mem_mb)html+=`<div class="kv"><div class="k">GPU Mem</div><div class="v">${pi.gpu_mem_mb} MB</div></div>`;
+  if(pi.throttled!=null){
+    const th=pi.throttled;const flags=(pi.throttle_flags||[]).join(', ')||'aucun';
+    html+=`<div class="kv"><div class="k">Throttling</div><div class="v" style="color:${th?'var(--rd)':'var(--g)'}">${th?`⚠ ${flags}`:'✓ Normal'}</div></div>`;
+  }
+  html+='</div>';
+  // Mémoire
+  if(pi.mem_total_mb!=null){
+    const used=pi.mem_used_mb||0,total=pi.mem_total_mb||1;
+    const usedPct=Math.round(used*100/total);
+    html+='<div class="sys-section"><div class="sys-title">Mémoire</div>';
+    html+=`<div class="kv"><div class="k">Total</div><div class="v">${total} MB</div></div>`;
+    html+=`<div class="kv"><div class="k">Utilisée</div><div class="v">${used} MB (${usedPct}%)</div></div>`;
+    html+=`<div class="bar-wrap"><div class="bar-fill" style="width:${usedPct}%;background:${usedPct>85?'var(--rd)':usedPct>65?'var(--am)':'var(--g)'}"></div></div>`;
+    html+='</div>';
+  }
+  // Disque
+  if(pi.disk_total_gb!=null){
+    const free=pi.disk_free_gb||0,total=pi.disk_total_gb||1;
+    const usedPct=Math.round((total-free)*100/total);
+    html+='<div class="sys-section"><div class="sys-title">Disque (/)</div>';
+    html+=`<div class="kv"><div class="k">Total</div><div class="v">${total} GB</div></div>`;
+    html+=`<div class="kv"><div class="k">Libre</div><div class="v">${free} GB (${100-usedPct}%)</div></div>`;
+    html+=`<div class="bar-wrap"><div class="bar-fill" style="width:${usedPct}%;background:${usedPct>85?'var(--rd)':usedPct>65?'var(--am)':'var(--g)'}"></div></div>`;
+    html+='</div>';
+  }
+  // Audio
+  html+='<div class="sys-section"><div class="sys-title">Audio</div>';
+  if(audio.aioc){
+    const a=audio.aioc;
+    html+=`<div class="kv"><div class="k">AIOC</div><div class="v audio-ok">✓ Détecté (${a.hw||'?'})</div></div>`;
+    if(a.capture_line)html+=`<div class="kv"><div class="k">Capture</div><div class="v" style="font-size:9px">${a.capture_line}</div></div>`;
+  } else {
+    html+=`<div class="kv"><div class="k">AIOC</div><div class="v audio-err">✗ Non détecté</div></div>`;
+  }
+  if(audio.usb_device)html+=`<div class="kv"><div class="k">USB</div><div class="v" style="font-size:9px">${audio.usb_device}</div></div>`;
+  if(audio.playback?.length){
+    html+='<div style="margin-top:6px"><div class="audio-lbl">Périphériques playback</div>';
+    for(const l of audio.playback)html+=`<div style="font-size:9px;color:var(--t2);padding:2px 0">${l}</div>`;
+    html+='</div>';
+  }
+  if(audio.capture?.length){
+    html+='<div style="margin-top:4px"><div class="audio-lbl">Périphériques capture</div>';
+    for(const l of audio.capture)html+=`<div style="font-size:9px;color:var(--t2);padding:2px 0">${l}</div>`;
+    html+='</div>';
+  }
+  html+='</div>';
+  document.getElementById('systemePanel').innerHTML=html;
 }
 
+// ── Monitor SSE ───────────────────────────────────────────────────────────────
+let monitorES=null,monitorActive=false;
+function monitorStart(){
+  if(monitorActive)return;
+  monitorActive=true;
+  const log=document.getElementById('monLog');
+  monitorES=new EventSource('/api/system/monitor');
+  monitorES.onmessage=e=>{
+    try{
+      const line=JSON.parse(e.data);
+      const div=document.createElement('div');
+      div.className='mon-line';
+      // Convertir codes ANSI basiques en spans colorés
+      div.innerHTML=ansiToHtml(line);
+      log.appendChild(div);
+      if(log.children.length>500)log.removeChild(log.firstChild);
+      log.scrollTop=log.scrollHeight;
+    }catch{}
+  };
+  monitorES.onerror=()=>{monitorActive=false;};
+}
+function monitorStop(){
+  if(monitorES){monitorES.close();monitorES=null;}
+  monitorActive=false;
+}
+const _ansiMap={'30':'#556677','31':'#ff4466','32':'#00ff88','33':'#ffaa00','34':'#00aaff','35':'#c864ff','36':'#00ccff','37':'#e8edf3','90':'#556677','91':'#ff6688','92':'#33ff99','93':'#ffbb33','94':'#33bbff','95':'#dd88ff','96':'#33ddff','97':'#ffffff'};
+function ansiToHtml(s){
+  const esc=s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return esc.replace(/\x1b\[([0-9;]*)m/g,(m,p)=>{
+    const codes=p.split(';');
+    if(codes.includes('0')||codes.includes('')){return'</span>';}
+    for(const c of codes){if(_ansiMap[c])return`<span style="color:${_ansiMap[c]}">`;}
+    return'';
+  });
+}
+
+// ── Terminal (xterm.js) ───────────────────────────────────────────────────────
+let term=null,termFit=null,termLoaded=false;
+function loadXterm(){
+  return new Promise(resolve=>{
+    if(termLoaded){resolve();return;}
+    const lnk=document.createElement('link');lnk.rel='stylesheet';lnk.href='https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css';document.head.appendChild(lnk);
+    const s1=document.createElement('script');s1.src='https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js';
+    s1.onload=()=>{
+      const s2=document.createElement('script');s2.src='https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js';
+      s2.onload=()=>{termLoaded=true;resolve();};
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s1);
+  });
+}
+function termStart(){
+  if(!SOCKETIO_ENABLED){alert('SocketIO requis pour le terminal');return;}
+  loadXterm().then(()=>{
+    const container=document.getElementById('terminal-container');
+    if(!term){
+      term=new Terminal({theme:{background:'#0a0e14',foreground:'#e8edf3',cursor:'#00ff88',selectionBackground:'#1a2230',black:'#0a0e14',red:'#ff4466',green:'#00ff88',yellow:'#ffaa00',blue:'#00aaff',magenta:'#c864ff',cyan:'#00ccff',white:'#e8edf3'},fontFamily:"'JetBrains Mono',monospace",fontSize:12,lineHeight:1.4,cursorBlink:true,scrollback:2000});
+      termFit=new FitAddon.FitAddon();
+      term.loadAddon(termFit);
+      term.open(container);
+      termFit.fit();
+      term.onData(d=>sock.emit('terminal_input',{data:d}));
+      new ResizeObserver(()=>{if(termFit)termFit.fit();}).observe(container);
+    }
+    sock.emit('terminal_start',{user:'pi'});
+    document.getElementById('termStartBtn').style.display='none';
+    document.getElementById('termStopBtn').style.display='';
+    document.getElementById('termStatus').textContent='Connecté';
+    document.getElementById('termStatus').style.color='var(--g)';
+    term.write('\r\n\x1b[32m[Sidecar Terminal — '+CONFIG.callsign+']\x1b[0m\r\n\r\n');
+    setTimeout(()=>{if(termFit){termFit.fit();sock.emit('terminal_resize',{rows:term.rows,cols:term.cols});}},200);
+  });
+}
+function termStop(){
+  sock.emit('terminal_stop');
+  if(term)term.write('\r\n\x1b[31m[Session fermée]\x1b[0m\r\n');
+  document.getElementById('termStartBtn').style.display='';
+  document.getElementById('termStopBtn').style.display='none';
+  document.getElementById('termStatus').textContent='Inactif';
+  document.getElementById('termStatus').style.color='var(--t3)';
+}
+function termClear(){if(term)term.clear();}
+
+// ── Fetch helpers ────────────────────────────────────────────────────────────
 function loadFrames(){
   fetch('/api/frames?n=80').then(r=>r.json()).then(frames=>{
     document.getElementById('fList').innerHTML='';
-    frames.reverse().forEach(f=>{
-      addF(f);
-      if(f.source)updSt(f.source,f);
-    });
+    frames.reverse().forEach(f=>{addF(f);if(f.source)updSt(f.source,f);});
     renderStations();
   });
 }
-
 function loadPositions(){
-  fetch('/api/positions').then(r=>r.json()).then(positions=>{
-    positions.forEach(p=>{
-      updMk({source:p.callsign,lat:p.lat,lon:p.lon,comment:p.comment,altitude:p.altitude,origin:p.origin});
-    });
-  });
+  fetch('/api/positions').then(r=>r.json()).then(ps=>{ps.forEach(p=>updMk({source:p.callsign,lat:p.lat,lon:p.lon,comment:p.comment,altitude:p.altitude,origin:p.origin}));});
+}
+function pollStats(){fetch('/api/stats').then(r=>r.json()).then(updateStats).catch(()=>{});}
+function loadConfigRaw(){fetch('/api/system/config/raw').then(r=>r.text()).then(t=>{document.getElementById('cfgRaw').textContent=t||'# vide';}).catch(()=>{document.getElementById('cfgRaw').textContent='Erreur chargement';});}
+function loadWifi(){fetch('/api/system/network').then(r=>r.json()).then(renderWifi).catch(()=>{document.getElementById('wifiPanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur réseau</div>';});}
+function loadClock(){fetch('/api/system/clock').then(r=>r.json()).then(renderClock).catch(()=>{document.getElementById('clockPanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur horloge</div>';});}
+function loadMeteo(){fetch('/api/weather').then(r=>r.json()).then(renderMeteo).catch(()=>{});}
+function loadSysteme(){
+  Promise.all([fetch('/api/system/pi').then(r=>r.json()),fetch('/api/system/audio').then(r=>r.json())]).then(([pi,audio])=>renderSysteme(pi,audio)).catch(()=>{document.getElementById('systemePanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur système</div>';});
 }
 
-function pollStats(){
-  fetch('/api/stats').then(r=>r.json()).then(updateStats).catch(()=>{});
-}
-
-function loadWifi(){
-  fetch('/api/system/network').then(r=>r.json()).then(renderWifi).catch(e=>{document.getElementById('wifiPanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur réseau</div>';});
-}
-
-function loadClock(){
-  fetch('/api/system/clock').then(r=>r.json()).then(renderClock).catch(e=>{document.getElementById('clockPanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur horloge</div>';});
-}
-
-function loadMeteo(){
-  fetch('/api/weather').then(r=>r.json()).then(renderMeteo).catch(()=>{document.getElementById('meteoPanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur météo</div>';});
-}
-
-/* Onglets principaux */
+// ── Onglets ───────────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(btn=>{btn.onclick=()=>{
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.tc').forEach(x=>x.classList.remove('on'));
@@ -431,40 +576,49 @@ document.querySelectorAll('.tab').forEach(btn=>{btn.onclick=()=>{
   if(btn.dataset.t==='horloge')loadClock();
   if(btn.dataset.t==='meteo')loadMeteo();
   if(btn.dataset.t==='config')loadConfigRaw();
+  if(btn.dataset.t==='systeme')loadSysteme();
+  if(btn.dataset.t==='terminal')setTimeout(()=>{if(termFit){termFit.fit();sock.emit('terminal_resize',{rows:term.rows,cols:term.cols});}},100);
+  if(btn.dataset.t==='principal'){const activeP=document.querySelector('.ptab.on');if(activeP?.dataset.p==='monitor')monitorStart();}
 };});
 
-/* Sub-onglets Principal */
 document.querySelectorAll('.ptab').forEach(btn=>{btn.onclick=()=>{
   document.querySelectorAll('.ptab').forEach(x=>x.classList.remove('on'));
   document.querySelectorAll('.pview').forEach(x=>x.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('pv-'+btn.dataset.p).classList.add('on');
   if(btn.dataset.p==='stations')renderStations();
+  if(btn.dataset.p==='monitor')monitorStart();
+  if(btn.dataset.p!=='monitor')monitorStop();
 };});
 
+// ── SocketIO ──────────────────────────────────────────────────────────────────
+let sock;
+if(SOCKETIO_ENABLED){
+  sock=io();
+  sock.on('connect',()=>{const dot=document.getElementById('dot');dot.style.background='#00ff88';dot.style.boxShadow='0 0 8px #00ff88';});
+  sock.on('disconnect',()=>{const dot=document.getElementById('dot');dot.style.background='#ff4466';dot.style.boxShadow='0 0 8px #ff4466';});
+  sock.on('new_frame',f=>{addF(f);updMk(f);if(f.source)updSt(f.source,f);renderStations();pollStats();});
+  sock.on('telemetry',()=>pollStats());
+  // Terminal
+  sock.on('terminal_output',d=>{if(term)term.write(d.data);});
+  sock.on('terminal_exit',()=>{
+    if(term)term.write('\r\n\x1b[31m[Processus terminé]\x1b[0m\r\n');
+    document.getElementById('termStartBtn').style.display='';
+    document.getElementById('termStopBtn').style.display='none';
+    document.getElementById('termStatus').textContent='Terminé';
+    document.getElementById('termStatus').style.color='var(--rd)';
+  });
+}else{
+  sock={emit:()=>{}};
+  const dot=document.getElementById('dot');dot.style.background='#ffaa00';dot.style.boxShadow='0 0 8px #ffaa00';
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 loadFrames();
 loadPositions();
 pollStats();
 loadConfigRaw();
 setInterval(pollStats,15000);
-
-if(SOCKETIO_ENABLED){
-  const sock=io();
-  sock.on('connect',()=>{const dot=document.getElementById('dot');dot.style.background='#00ff88';dot.style.boxShadow='0 0 8px #00ff88';});
-  sock.on('disconnect',()=>{const dot=document.getElementById('dot');dot.style.background='#ff4466';dot.style.boxShadow='0 0 8px #ff4466';});
-  sock.on('new_frame',f=>{
-    addF(f);
-    updMk(f);
-    if(f.source)updSt(f.source,f);
-    renderStations();
-    pollStats();
-  });
-  sock.on('telemetry',()=>pollStats());
-}else{
-  const dot=document.getElementById('dot');
-  dot.style.background='#ffaa00';
-  dot.style.boxShadow='0 0 8px #ffaa00';
-}
 </script>
 </body>
 </html>

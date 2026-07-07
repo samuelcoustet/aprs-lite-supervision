@@ -253,6 +253,159 @@ def api_weather():
     return jsonify(frames)
 
 
+@app.route("/api/system/monitor")
+def api_system_monitor():
+    import json as _json
+    journal_unit = SETTINGS["JOURNAL_UNIT"]
+
+    def generate():
+        try:
+            env = {
+                "SYSTEMD_COLORS": "1",
+                "TERM": "xterm-256color",
+                "PATH": "/usr/bin:/bin",
+                "HOME": "/root",
+            }
+            proc = __import__("subprocess").Popen(
+                ["journalctl", "-u", journal_unit, "-f", "--output=cat", "-n", "80", "--no-pager"],
+                stdout=__import__("subprocess").PIPE,
+                stderr=__import__("subprocess").DEVNULL,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+            )
+            for line in proc.stdout:
+                if not line:
+                    continue
+                try:
+                    yield f"data: {_json.dumps(line.rstrip())}\n\n"
+                except GeneratorExit:
+                    proc.terminate()
+                    return
+            proc.terminate()
+        except Exception as exc:
+            yield f"data: {_json.dumps('Erreur: ' + str(exc))}\n\n"
+
+    return app.response_class(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+@app.route("/api/system/pi")
+def api_system_pi():
+    import platform
+    from collector import get_pi_info
+    return jsonify(get_pi_info())
+
+
+@app.route("/api/system/audio")
+def api_system_audio():
+    from collector import get_audio_info
+    return jsonify(get_audio_info())
+
+
+# ── Terminal WebSocket (PTY) ──────────────────────────────────────────────────
+if socketio is not None:
+    import pty, fcntl, struct, termios, select as _select, signal as _signal
+
+    _terminal_fd = None
+    _terminal_pid = None
+
+    def _set_winsize(fd, rows, cols):
+        try:
+            fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+        except Exception:
+            pass
+
+    def _pty_read_loop():
+        global _terminal_fd, _terminal_pid
+        while _terminal_fd:
+            try:
+                r, _, _ = _select.select([_terminal_fd], [], [], 0.1)
+                if r:
+                    data = os.read(_terminal_fd, 4096)
+                    if data:
+                        socketio.emit("terminal_output", {"data": data.decode("utf-8", errors="replace")})
+            except (OSError, IOError):
+                break
+        _terminal_fd = None
+        _terminal_pid = None
+        socketio.emit("terminal_exit", {})
+
+    def _pty_spawn(user="pi"):
+        global _terminal_fd, _terminal_pid
+        homes = {"pi": "/home/pi", "root": "/root"}
+        home = homes.get(user, "/home/pi")
+        cmd = ["bash", "-i"] if user == "pi" else ["sudo", "-u", user, "-H", "bash", "-i"]
+        exe = cmd[0]
+        pid, fd = pty.fork()
+        if pid == 0:
+            os.execvpe(exe, cmd, {
+                "TERM": "xterm-256color",
+                "HOME": home,
+                "USER": user,
+                "LOGNAME": user,
+                "PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            })
+        else:
+            _terminal_fd = fd
+            _terminal_pid = pid
+            __import__("threading").Thread(target=_pty_read_loop, daemon=True).start()
+
+    def _pty_kill():
+        global _terminal_fd, _terminal_pid
+        if _terminal_pid:
+            try:
+                os.kill(_terminal_pid, _signal.SIGKILL)
+                os.waitpid(_terminal_pid, os.WNOHANG)
+            except Exception:
+                pass
+            _terminal_pid = None
+        if _terminal_fd:
+            try:
+                os.close(_terminal_fd)
+            except Exception:
+                pass
+            _terminal_fd = None
+
+    @socketio.on("terminal_start")
+    def ws_terminal_start(data=None):
+        global _terminal_pid
+        if _terminal_pid:
+            return
+        _pty_spawn((data or {}).get("user", "pi"))
+
+    @socketio.on("terminal_input")
+    def ws_terminal_input(data):
+        global _terminal_fd
+        if _terminal_fd:
+            try:
+                os.write(_terminal_fd, data["data"].encode("utf-8"))
+            except OSError:
+                pass
+
+    @socketio.on("terminal_resize")
+    def ws_terminal_resize(data):
+        global _terminal_fd
+        if _terminal_fd:
+            _set_winsize(_terminal_fd, data.get("rows", 24), data.get("cols", 80))
+
+    @socketio.on("terminal_restart")
+    def ws_terminal_restart(data=None):
+        _pty_kill()
+        socketio.emit("terminal_exit", {})
+        __import__("time").sleep(0.2)
+        _pty_spawn((data or {}).get("user", "pi"))
+
+    @socketio.on("terminal_stop")
+    def ws_terminal_stop():
+        _pty_kill()
+        socketio.emit("terminal_exit", {})
+
+
 if socketio is not None:
     @socketio.on("connect")
     def ws_connect():
