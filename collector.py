@@ -108,6 +108,76 @@ def get_primary_ip() -> str:
         return "127.0.0.1"
 
 
+def get_network_info() -> dict:
+    info: dict = {"hostname": socket.gethostname(), "primary_ip": get_primary_ip(), "interfaces": [], "wifi": {}}
+    try:
+        r = subprocess.run(["ip", "-j", "addr", "show"], capture_output=True, text=True, timeout=5)
+        ifaces = json.loads(r.stdout)
+        for iface in ifaces:
+            name = iface.get("ifname", "")
+            flags = iface.get("flags", [])
+            addrs = [a["local"] for a in iface.get("addr_info", []) if a.get("family") in ("inet", "inet6")]
+            info["interfaces"].append({"name": name, "state": iface.get("operstate", "?"), "addrs": addrs, "flags": flags})
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(["iwgetid", "-r"], capture_output=True, text=True, timeout=3)
+        ssid = r.stdout.strip()
+        if ssid:
+            info["wifi"]["ssid"] = ssid
+        r2 = subprocess.run(["iwgetid", "-a"], capture_output=True, text=True, timeout=3)
+        bssid = r2.stdout.strip().split()[-1] if r2.stdout.strip() else ""
+        if bssid:
+            info["wifi"]["bssid"] = bssid
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(["iw", "dev", "wlan0", "link"], capture_output=True, text=True, timeout=3)
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("signal:"):
+                info["wifi"]["signal_dbm"] = line.split(":")[1].strip().split()[0]
+            elif line.startswith("tx bitrate:"):
+                info["wifi"]["tx_bitrate"] = line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return info
+
+
+def get_clock_info() -> dict:
+    info: dict = {"now": datetime.now(timezone.utc).isoformat(), "uptime_seconds": get_uptime_seconds(), "timezone": "?", "ntp_sync": False, "ntp_service": "?"}
+    try:
+        r = subprocess.run(
+            ["timedatectl", "show", "--no-pager", "-p", "Timezone,NTPSynchronized,NTP,LocalRTC,TimeUSec"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in r.stdout.splitlines():
+            k, _, v = line.partition("=")
+            k = k.strip(); v = v.strip()
+            if k == "Timezone":
+                info["timezone"] = v
+            elif k == "NTPSynchronized":
+                info["ntp_sync"] = v == "yes"
+            elif k == "NTP":
+                info["ntp_enabled"] = v == "yes"
+            elif k == "LocalRTC":
+                info["local_rtc"] = v == "yes"
+    except Exception:
+        pass
+    try:
+        r = subprocess.run(["timedatectl", "show-timesync", "--no-pager", "-p", "ServerName,Poll,Leap"], capture_output=True, text=True, timeout=5)
+        for line in r.stdout.splitlines():
+            k, _, v = line.partition("=")
+            k = k.strip(); v = v.strip()
+            if k == "ServerName":
+                info["ntp_server"] = v
+            elif k == "Poll":
+                info["ntp_poll_s"] = v
+    except Exception:
+        pass
+    return info
+
+
 def system_snapshot(service_name: str) -> dict:
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),

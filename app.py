@@ -235,6 +235,24 @@ def api_system_config_raw():
     return Response(STATE.config_raw, mimetype="text/plain; charset=utf-8")
 
 
+@app.route("/api/system/network")
+def api_system_network():
+    from collector import get_network_info
+    return jsonify(get_network_info())
+
+
+@app.route("/api/system/clock")
+def api_system_clock():
+    from collector import get_clock_info
+    return jsonify(get_clock_info())
+
+
+@app.route("/api/weather")
+def api_weather():
+    frames = DB.get_frames(n=50, data_type="weather")
+    return jsonify(frames)
+
+
 if socketio is not None:
     @socketio.on("connect")
     def ws_connect():
