@@ -84,7 +84,7 @@ app.config["SECRET_KEY"] = _load_secret_key()
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
 AUTH_FILE = Path("/home/pi/aprs-sidecar-dashboard/data/auth.json")
-DEFAULT_PASSWORD = "arpa"
+DEFAULT_PASSWORD = "aprs"
 
 
 def _hash_pw(pw: str) -> str:
