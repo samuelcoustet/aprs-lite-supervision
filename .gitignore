@@ -1,4 +1,20 @@
+# Python
 __pycache__/
 *.pyc
-data/
+*.pyo
 venv/
+.env
+
+# Data / DB
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Secrets
+.secret_key
+auth.json
+
+# OS
+.DS_Store
+Thumbs.db

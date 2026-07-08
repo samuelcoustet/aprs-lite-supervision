@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""Read-only sidecar dashboard for aprs-lite."""
+"""Sidecar dashboard for aprs-lite."""
 
 from __future__ import annotations
 
 import atexit
+import hashlib
+import json
 import os
+import subprocess
+import threading
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request
+from flask import Flask, Response, jsonify, redirect, render_template, request, session, url_for
 
 from collector import JournalCollector, RuntimeState, load_env_file, service_status, system_snapshot
 from db import SidecarDB
@@ -57,12 +61,67 @@ STATE = RuntimeState(
 )
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-app.config["SECRET_KEY"] = os.urandom(24).hex()
+
+_SECRET_FILE = Path("/home/pi/aprs-sidecar-dashboard/data/.secret_key")
+
+def _load_secret_key() -> str:
+    try:
+        if _SECRET_FILE.exists():
+            return _SECRET_FILE.read_text().strip()
+    except Exception:
+        pass
+    key = os.urandom(24).hex()
+    try:
+        _SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _SECRET_FILE.write_text(key)
+        _SECRET_FILE.chmod(0o600)
+    except Exception:
+        pass
+    return key
+
+app.config["SECRET_KEY"] = _load_secret_key()
+
+# ── Auth helpers ──────────────────────────────────────────────────────────────
+
+AUTH_FILE = Path("/home/pi/aprs-sidecar-dashboard/data/auth.json")
+DEFAULT_PASSWORD = "arpa"
+
+
+def _hash_pw(pw: str) -> str:
+    return hashlib.sha256(pw.encode()).hexdigest()
+
+
+def _load_auth() -> dict:
+    try:
+        return json.loads(AUTH_FILE.read_text())
+    except Exception:
+        return {"password_hash": _hash_pw(DEFAULT_PASSWORD)}
+
+
+def _save_auth(data: dict):
+    AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
+    AUTH_FILE.write_text(json.dumps(data))
+
+
+def _check_password(pw: str) -> bool:
+    return _load_auth().get("password_hash") == _hash_pw(pw)
+
+
+@app.before_request
+def require_login():
+    if request.path.startswith("/static") or request.path.startswith("/login"):
+        return
+    if not session.get("logged_in"):
+        return redirect(url_for("login"))
 
 if HAS_SOCKETIO:
     socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 else:
     socketio = None
+
+# ── Connected clients tracking ────────────────────────────────────────────────
+_connected_clients: dict[str, str] = {}  # sid → ip
+_clients_lock = threading.Lock()
 
 COLLECTOR = JournalCollector(
     db=DB,
@@ -109,6 +168,59 @@ def service_rows() -> list[dict]:
     for name in names:
         rows.append({"name": name, "status": service_status(name)})
     return rows
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = ""
+    if request.method == "POST":
+        pw = request.form.get("password", "")
+        if _check_password(pw):
+            session["logged_in"] = True
+            return redirect(url_for("index"))
+        error = "Mot de passe incorrect"
+    return """<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>APRS Lite — Connexion</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'JetBrains Mono',monospace;background:#0a0e14;color:#e8edf3;display:flex;align-items:center;justify-content:center;height:100vh}
+.box{background:#111820;border:1px solid #1e2a3a;border-radius:10px;padding:36px 40px;width:340px}
+h1{font-size:18px;color:#00ff88;margin-bottom:24px;letter-spacing:2px;font-family:'Exo 2',sans-serif}
+label{font-size:11px;color:#8899aa;display:block;margin-bottom:4px}
+input{width:100%;background:#0a0e14;border:1px solid #1e2a3a;border-radius:4px;color:#e8edf3;font-size:13px;padding:8px 10px;outline:none;font-family:inherit;margin-bottom:16px}
+input:focus{border-color:#00aaff}
+button{width:100%;padding:9px;border:1px solid #00ff88;border-radius:4px;background:rgba(0,255,136,.08);color:#00ff88;font-size:13px;cursor:pointer;font-family:inherit}
+button:hover{background:rgba(0,255,136,.18)}
+.err{color:#ff4466;font-size:11px;margin-top:10px;text-align:center}
+</style></head><body>
+<div class="box">
+  <h1>APRS LITE SIDECAR</h1>
+  <form method="post">
+    <label>Mot de passe</label>
+    <input type="password" name="password" autofocus placeholder="••••">
+    <button type="submit">Connexion</button>
+    """ + (f'<div class="err">{error}</div>' if error else "") + """
+  </form>
+</div></body></html>"""
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/api/auth/password", methods=["POST"])
+def api_auth_password():
+    data = request.get_json(force=True) or {}
+    old = data.get("old_password", "")
+    new = data.get("new_password", "")
+    if not _check_password(old):
+        return jsonify({"ok": False, "error": "Ancien mot de passe incorrect"}), 403
+    if len(new) < 4:
+        return jsonify({"ok": False, "error": "Nouveau mot de passe trop court (min 4 caractères)"}), 400
+    _save_auth({"password_hash": _hash_pw(new)})
+    return jsonify({"ok": True})
 
 
 @app.route("/")
@@ -318,6 +430,454 @@ def api_system_audio():
     return jsonify(get_audio_info())
 
 
+# ── Action endpoints ──────────────────────────────────────────────────────────
+
+@app.route("/api/config/save", methods=["POST"])
+def api_config_save():
+    from collector import save_config_bulk, EDITABLE_KEYS
+    data = request.get_json(force=True) or {}
+    filtered = {k: v for k, v in data.items() if k in EDITABLE_KEYS}
+    if not filtered:
+        return jsonify({"ok": False, "error": "Aucune clé valide"}), 400
+    ok, err = save_config_bulk(filtered)
+    if ok:
+        reload_settings()
+    return jsonify({"ok": ok, "error": err})
+
+
+@app.route("/api/direwolf/restart", methods=["POST"])
+def api_direwolf_restart():
+    from collector import restart_direwolf
+    ok, err = restart_direwolf()
+    return jsonify({"ok": ok, "error": err})
+
+
+@app.route("/api/aioc/detect", methods=["POST"])
+def api_aioc_detect():
+    from collector import detect_aioc_full
+    return jsonify(detect_aioc_full())
+
+
+@app.route("/api/beacon/send", methods=["POST"])
+def api_beacon_send():
+    from collector import send_kiss_packet, _make_beacon_packet
+    cfg = reload_settings()["LITE_CONFIG"]
+    packet = _make_beacon_packet(cfg)
+    ok, err = send_kiss_packet(packet)
+    return jsonify({"ok": ok, "error": err, "packet": packet})
+
+
+@app.route("/api/weather/send", methods=["POST"])
+def api_weather_send():
+    from collector import send_kiss_packet, make_weather_packet, get_sensor_data
+    cfg = reload_settings()["LITE_CONFIG"]
+    callsign = cfg.get("CALLSIGN", "N0CALL")
+    try:
+        lat = float(cfg.get("LAT", "0"))
+        lon = float(cfg.get("LON", "0"))
+    except ValueError:
+        return jsonify({"ok": False, "error": "LAT/LON invalides dans config"}), 400
+    sensor = get_sensor_data()
+    if not sensor.get("ok"):
+        return jsonify({"ok": False, "error": sensor.get("error", "Capteur indisponible")}), 503
+    packet = make_weather_packet(callsign, lat, lon, sensor)
+    ok, err = send_kiss_packet(packet)
+    return jsonify({"ok": ok, "error": err, "packet": packet})
+
+
+@app.route("/api/sensor")
+def api_sensor():
+    from collector import get_sensor_data
+    return jsonify(get_sensor_data())
+
+
+@app.route("/api/wifi/scan", methods=["POST"])
+def api_wifi_scan():
+    from collector import wifi_scan, wifi_current
+    return jsonify({"networks": wifi_scan(), "current": wifi_current()})
+
+
+@app.route("/api/wifi/connect", methods=["POST"])
+def api_wifi_connect():
+    from collector import wifi_connect
+    data = request.get_json(force=True) or {}
+    ssid = data.get("ssid", "").strip()
+    password = data.get("password", "").strip()
+    if not ssid:
+        return jsonify({"ok": False, "error": "SSID requis"}), 400
+    ok, msg = wifi_connect(ssid, password)
+    return jsonify({"ok": ok, "message": msg})
+
+
+@app.route("/api/wifi/disconnect", methods=["POST"])
+def api_wifi_disconnect():
+    from collector import wifi_disconnect
+    ok, msg = wifi_disconnect()
+    return jsonify({"ok": ok, "message": msg})
+
+
+@app.route("/api/clock/sync", methods=["POST"])
+def api_clock_sync():
+    from collector import ntp_sync
+    ok, msg = ntp_sync()
+    return jsonify({"ok": ok, "message": msg})
+
+
+@app.route("/api/clock/set", methods=["POST"])
+def api_clock_set():
+    from collector import clock_set
+    data = request.get_json(force=True) or {}
+    value = data.get("datetime", "").strip()
+    ok, msg = clock_set(value)
+    return jsonify({"ok": ok, "message": msg})
+
+
+# ── direwolf.conf ──────────────────────────────────────────────────────────────
+
+@app.route("/api/system/direwolf")
+def api_direwolf_conf():
+    from collector import parse_direwolf_conf
+    return jsonify(parse_direwolf_conf())
+
+
+@app.route("/api/system/direwolf/raw", methods=["GET", "POST"])
+def api_direwolf_conf_raw():
+    from collector import write_direwolf_conf_raw, DIREWOLF_CONF
+    if request.method == "GET":
+        try:
+            return Response(DIREWOLF_CONF.read_text(encoding="utf-8", errors="replace"), mimetype="text/plain; charset=utf-8")
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 500
+    data = request.get_json(force=True) or {}
+    content = data.get("content", "")
+    ok, err = write_direwolf_conf_raw(content)
+    if ok:
+        from collector import restart_direwolf
+        restart_direwolf()
+    return jsonify({"ok": ok, "error": err})
+
+
+# ── config.env raw write ───────────────────────────────────────────────────────
+
+@app.route("/api/config/raw", methods=["POST"])
+def api_config_raw():
+    data = request.get_json(force=True) or {}
+    content = data.get("content", "")
+    try:
+        Path(SETTINGS["CONFIG_PATH"]).write_text(content, encoding="utf-8")
+        reload_settings()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── VU-mètre AIOC (SSE) ───────────────────────────────────────────────────────
+
+@app.route("/api/audio/levels")
+def api_audio_levels():
+    from collector import stream_audio_levels
+    return app.response_class(
+        stream_audio_levels(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+# ── OTA Update ────────────────────────────────────────────────────────────────
+
+@app.route("/api/system/update/upload", methods=["POST"])
+def api_update_upload():
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"ok": False, "error": "Aucun fichier"}), 400
+    dest = Path("/tmp/ota_update.deb")
+    f.save(str(dest))
+    try:
+        r = subprocess.run(["dpkg-deb", "-I", str(dest)], capture_output=True, text=True, timeout=10)
+        if r.returncode != 0:
+            return jsonify({"ok": False, "error": r.stderr.strip() or "Fichier .deb invalide"}), 400
+        return jsonify({"ok": True, "info": r.stdout.strip()})
+    except FileNotFoundError:
+        return jsonify({"ok": False, "error": "dpkg-deb non disponible"}), 500
+
+
+@app.route("/api/system/update/install")
+def api_update_install():
+    import json as _json
+
+    def generate():
+        try:
+            proc = subprocess.Popen(
+                ["sudo", "dpkg", "-i", "/tmp/ota_update.deb"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            for line in proc.stdout:
+                yield f"data: {_json.dumps(line.rstrip())}\n\n"
+            proc.wait()
+            yield f"data: {_json.dumps('EXIT:' + str(proc.returncode))}\n\n"
+        except Exception as exc:
+            yield f"data: {_json.dumps('Erreur: ' + str(exc))}\n\n"
+
+    return app.response_class(
+        generate(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+# ── Reboot Pi ─────────────────────────────────────────────────────────────────
+
+@app.route("/api/system/reboot", methods=["POST"])
+def api_system_reboot():
+    threading.Timer(1.5, lambda: subprocess.run(["sudo", "reboot"])).start()
+    return jsonify({"ok": True, "message": "Redémarrage dans 1.5s…"})
+
+
+# ── Service start/stop/restart ────────────────────────────────────────────────
+
+SERVICE_WHITELIST = {"aprs-direwolf", "aprs-lite-tui", "aprs-watchdog", "aprs-sidecar-dashboard"}
+
+
+@app.route("/api/system/service/<name>/<action>", methods=["POST"])
+def api_service_action(name, action):
+    if name not in SERVICE_WHITELIST:
+        return jsonify({"ok": False, "error": f"Service '{name}' non autorisé"}), 403
+    if action not in ("start", "stop", "restart"):
+        return jsonify({"ok": False, "error": f"Action '{action}' invalide"}), 400
+    try:
+        r = subprocess.run(
+            ["sudo", "/bin/systemctl", action, name],
+            capture_output=True, text=True, timeout=20,
+        )
+        return jsonify({"ok": r.returncode == 0, "error": r.stderr.strip()})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── System events SSE (watchdog log) ─────────────────────────────────────────
+
+@app.route("/api/system/events")
+def api_system_events():
+    from collector import stream_system_events
+    return app.response_class(
+        stream_system_events(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
+# ── Watchdog log ──────────────────────────────────────────────────────────────
+
+@app.route("/api/system/watchdog")
+def api_system_watchdog():
+    import re as _re
+    n = int(request.args.get("n", 200))
+    log_path = Path("/opt/aprs-lite/logs/watchdog.log")
+    if not log_path.exists():
+        return jsonify([])
+    try:
+        r = subprocess.run(["tail", "-n", str(n), str(log_path)], capture_output=True, text=True, timeout=5)
+        lines = r.stdout.splitlines()
+        pat = _re.compile(r'^(\S+\s+\S+)\s+(\w+)\s+(.*)')
+        result = []
+        for line in lines:
+            m = pat.match(line)
+            if m:
+                result.append({"ts": m.group(1), "level": m.group(2), "message": m.group(3)})
+            elif line.strip():
+                result.append({"ts": "", "level": "INFO", "message": line})
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ── aprs.fi status ───────────────────────────────────────────────────────────
+
+@app.route("/api/aprsfi")
+def api_aprsfi():
+    from collector import get_aprsfi_status
+    cfg = SETTINGS["LITE_CONFIG"]
+    callsign = cfg.get("CALLSIGN", "")
+    apikey = cfg.get("APRSFI_KEY", "")
+    return jsonify(get_aprsfi_status(callsign, apikey))
+
+
+# ── CSV log history ───────────────────────────────────────────────────────────
+
+@app.route("/api/logs/dates")
+def api_logs_dates():
+    from collector import read_log_dates
+    return jsonify(read_log_dates())
+
+
+@app.route("/api/logs/frames")
+def api_logs_frames():
+    import csv as _csv, io as _io
+    from collector import read_log_frames
+    date_str = request.args.get("date", "")
+    fmt = request.args.get("format", "json")
+    cfg = SETTINGS["LITE_CONFIG"]
+    try:
+        own_lat = float(cfg.get("LAT", ""))
+        own_lon = float(cfg.get("LON", ""))
+    except Exception:
+        own_lat = own_lon = None
+    frames = read_log_frames(date_str, own_lat, own_lon)
+    if fmt == "csv":
+        if not frames:
+            return Response("", mimetype="text/csv")
+        out = _io.StringIO()
+        w = _csv.DictWriter(out, fieldnames=frames[0].keys())
+        w.writeheader(); w.writerows(frames)
+        return Response(
+            out.getvalue(), mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=aprs_{date_str}.csv"},
+        )
+    return jsonify(frames)
+
+
+# ── Analyse (stats agrégées) ─────────────────────────────────────────────────
+
+@app.route("/api/analyse")
+def api_analyse():
+    hours = request.args.get("hours")
+    since_hours = float(hours) if hours and hours != "all" else None
+    result = DB.get_analyse(since_hours=since_hours)
+    cfg = SETTINGS["LITE_CONFIG"]
+    try:
+        own_lat = float(cfg.get("LAT", ""))
+        own_lon = float(cfg.get("LON", ""))
+        from collector import haversine
+        for st in result["stations"]:
+            lat, lon = st.get("last_lat"), st.get("last_lon")
+            if lat is not None and lon is not None:
+                d, b = haversine(own_lat, own_lon, lat, lon)
+                st["distance_km"] = d
+                st["bearing_deg"] = b
+    except Exception:
+        pass
+    return jsonify(result)
+
+
+# ── Connected clients ─────────────────────────────────────────────────────────
+
+@app.route("/api/system/clients")
+def api_system_clients():
+    with _clients_lock:
+        clients = list(_connected_clients.values())
+    # deduplicate IPs
+    unique = list(dict.fromkeys(clients))
+    return jsonify({"count": len(unique), "ips": unique})
+
+
+# ── Export CSV preview ────────────────────────────────────────────────────────
+
+@app.route("/api/export/frames/preview")
+def api_export_frames_preview():
+    n = int(request.args.get("n", 20))
+    frames = DB.get_frames(
+        n=n,
+        source=request.args.get("source"),
+        data_type=request.args.get("type"),
+        since=request.args.get("since"),
+        until=request.args.get("until"),
+        origin=request.args.get("origin"),
+    )
+    headers = ["id", "timestamp", "source", "destination", "path", "data_type", "origin", "lat", "lon", "comment", "raw"]
+    rows = [[f.get(h) for h in headers] for f in frames]
+    return jsonify({"headers": headers, "rows": rows})
+
+
+# ── Backup / Restore ─────────────────────────────────────────────────────────
+
+BACKUP_DIR = Path("/home/pi/aprs-sidecar-dashboard/backups")
+
+@app.route("/api/backup/create", methods=["POST"])
+def api_backup_create():
+    import tarfile, datetime
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive = BACKUP_DIR / f"backup_{ts}.tar.gz"
+        sources = [
+            "/opt/aprs-lite/config.env",
+            "/opt/aprs-lite/direwolf.conf",
+            "/home/pi/aprs-sidecar-dashboard/data",
+        ]
+        with tarfile.open(str(archive), "w:gz") as tar:
+            for src in sources:
+                p = Path(src)
+                if p.exists():
+                    tar.add(str(p), arcname=p.name if p.is_file() else p.name)
+        return jsonify({"ok": True, "file": archive.name, "size": archive.stat().st_size})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/backup/list")
+def api_backup_list():
+    try:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        files = sorted(BACKUP_DIR.glob("backup_*.tar.gz"), reverse=True)
+        return jsonify([
+            {"name": f.name, "size": f.stat().st_size, "mtime": f.stat().st_mtime}
+            for f in files
+        ])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/backup/download/<name>")
+def api_backup_download(name):
+    import re as _re
+    from flask import send_file
+    if not _re.match(r'^backup_\d{8}_\d{6}\.tar\.gz$', name):
+        return jsonify({"error": "Nom invalide"}), 400
+    f = BACKUP_DIR / name
+    if not f.exists():
+        return jsonify({"error": "Fichier introuvable"}), 404
+    return send_file(str(f), as_attachment=True, download_name=name)
+
+
+@app.route("/api/backup/restore/<name>", methods=["POST"])
+def api_backup_restore(name):
+    import re as _re, tarfile, shutil
+    if not _re.match(r'^backup_\d{8}_\d{6}\.tar\.gz$', name):
+        return jsonify({"error": "Nom invalide"}), 400
+    f = BACKUP_DIR / name
+    if not f.exists():
+        return jsonify({"error": "Fichier introuvable"}), 404
+    try:
+        restored = []
+        with tarfile.open(str(f), "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.name == "config.env":
+                    tar.extract(member, path="/opt/aprs-lite", filter="data")
+                    restored.append("config.env")
+                elif member.name == "direwolf.conf":
+                    tar.extract(member, path="/opt/aprs-lite", filter="data")
+                    restored.append("direwolf.conf")
+        return jsonify({"ok": True, "restored": restored})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/backup/delete/<name>", methods=["POST"])
+def api_backup_delete(name):
+    import re as _re
+    if not _re.match(r'^backup_\d{8}_\d{6}\.tar\.gz$', name):
+        return jsonify({"error": "Nom invalide"}), 400
+    f = BACKUP_DIR / name
+    if not f.exists():
+        return jsonify({"error": "Fichier introuvable"}), 404
+    f.unlink()
+    return jsonify({"ok": True})
+
+
 # ── Terminal WebSocket (PTY) ──────────────────────────────────────────────────
 if socketio is not None:
     import pty, fcntl, struct, termios, select as _select, signal as _signal
@@ -419,12 +979,27 @@ if socketio is not None:
 
 if socketio is not None:
     @socketio.on("connect")
-    def ws_connect():
+    def ws_connect(auth=None):
+        try:
+            sid = request.sid
+            ip = request.environ.get("HTTP_X_FORWARDED_FOR", request.environ.get("REMOTE_ADDR", "?"))
+            with _clients_lock:
+                _connected_clients[sid] = ip.split(",")[0].strip()
+        except Exception:
+            pass
         for frame in reversed(DB.get_frames(n=30)):
             socketio.emit("new_frame", frame)
         latest = DB.get_latest_telemetry()
         if latest:
             socketio.emit("telemetry", latest)
+
+    @socketio.on("disconnect")
+    def ws_disconnect():
+        try:
+            with _clients_lock:
+                _connected_clients.pop(request.sid, None)
+        except Exception:
+            pass
 
 
 def main():

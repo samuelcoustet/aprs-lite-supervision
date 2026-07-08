@@ -334,6 +334,51 @@ class SidecarDB:
             "origins": origins,
         }
 
+    def get_analyse(self, since_hours: float | None = None) -> dict:
+        """Aggregate stats for the Analyse tab (time-filtered from live DB)."""
+        if since_hours is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
+            tc = "AND f.timestamp >= ?"
+            p: list[object] = [cutoff]
+        else:
+            tc = ""
+            p = []
+
+        with self._connect() as conn:
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM frames f WHERE 1=1 {tc}", p
+            ).fetchone()[0]
+
+            origins_rows = conn.execute(
+                f"SELECT origin, COUNT(*) AS cnt FROM frames f WHERE 1=1 {tc} GROUP BY origin",
+                p,
+            ).fetchall()
+
+            stations_rows = conn.execute(
+                f"""
+                SELECT
+                    f.source AS callsign,
+                    COUNT(*) AS frame_count,
+                    MAX(f.timestamp) AS last_seen,
+                    MAX(CASE WHEN f.origin = 'rf' THEN 1 ELSE 0 END) AS has_direct,
+                    MAX(CASE WHEN f.origin = 'rf_digi' THEN 1 ELSE 0 END) AS has_digi,
+                    MAX(CASE WHEN f.speed IS NOT NULL AND f.speed > 0 THEN 1 ELSE 0 END) AS is_mobile,
+                    s.last_lat, s.last_lon, s.last_symbol, s.last_comment, s.last_origin
+                FROM frames f
+                LEFT JOIN stations s ON s.callsign = f.source
+                WHERE f.source != '' {tc}
+                GROUP BY f.source
+                ORDER BY last_seen DESC
+                """,
+                p,
+            ).fetchall()
+
+        return {
+            "total_frames": total,
+            "origins": {row["origin"]: row["cnt"] for row in origins_rows},
+            "stations": [dict(row) for row in stations_rows],
+        }
+
     def export_frames_csv(
         self,
         since: str | None = None,

@@ -20,7 +20,7 @@ from db import SidecarDB
 
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*m|\033\[[0-9;]*m")
 # [0] rf rx, [0L] local tx, [0H] heard via digi — any channel number
-RF_RE = re.compile(r"^\[(\d+)(L)?(H)?\]\s+(.+)$")
+RF_RE = re.compile(r"^\[(\d+)(?:\.\d+)?(L)?(H)?\]\s+(.+)$")
 IG_RE = re.compile(r"^\[ig\]\s+(.+)$")
 IGTX_RE = re.compile(r"^\[ig>tx\]\s+(.+)$")
 
@@ -180,6 +180,159 @@ def get_clock_info() -> dict:
     return info
 
 
+# ── Haversine ────────────────────────────────────────────────────────────────
+
+def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> tuple[float, float]:
+    """Return (distance_km, bearing_deg) from point 1 to point 2."""
+    import math
+    R = 6371.0
+    φ1, φ2 = math.radians(lat1), math.radians(lat2)
+    dφ = math.radians(lat2 - lat1)
+    dλ = math.radians(lon2 - lon1)
+    a = math.sin(dφ / 2) ** 2 + math.cos(φ1) * math.cos(φ2) * math.sin(dλ / 2) ** 2
+    dist = R * 2 * math.asin(math.sqrt(a))
+    y = math.sin(dλ) * math.cos(φ2)
+    x = math.cos(φ1) * math.sin(φ2) - math.sin(φ1) * math.cos(φ2) * math.cos(dλ)
+    brg = (math.degrees(math.atan2(y, x)) + 360) % 360
+    return round(dist, 2), round(brg, 1)
+
+
+# ── Direwolf version ──────────────────────────────────────────────────────────
+
+def get_direwolf_version() -> str:
+    try:
+        r = subprocess.run(
+            ["direwolf", "--version"],
+            capture_output=True, text=True, timeout=5,
+        )
+        output = (r.stdout + r.stderr)
+        for line in output.splitlines():
+            if "Dire Wolf version" in line or "direwolf version" in line.lower():
+                return line.strip()
+        return output.splitlines()[0].strip() if output.strip() else "inconnu"
+    except Exception:
+        return "inconnu"
+
+
+# ── aprs.fi status ────────────────────────────────────────────────────────────
+
+def get_aprsfi_status(callsign: str, apikey: str = "") -> dict:
+    """Query aprs.fi API for a callsign. Returns status dict."""
+    import urllib.request, urllib.parse
+    if not callsign:
+        return {"error": "Indicatif non configuré"}
+    if not apikey:
+        return {"error": "APRSFI_KEY non configurée dans config.env"}
+    try:
+        params = urllib.parse.urlencode({"name": callsign, "what": "loc", "apikey": apikey, "format": "json"})
+        url = f"https://api.aprs.fi/api/get?{params}"
+        ctx = __import__("ssl").create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = __import__("ssl").CERT_NONE
+        with urllib.request.urlopen(url, timeout=8, context=ctx) as resp:
+            data = json.loads(resp.read().decode())
+        if data.get("result") != "ok":
+            return {"error": data.get("description", "Erreur API")}
+        entries = data.get("entries", [])
+        if not entries:
+            return {"error": f"{callsign} non trouvé sur aprs.fi"}
+        e = entries[0]
+        now = time.time()
+        age_s = int(now - float(e.get("lasttime", now)))
+        path = e.get("path", "")
+        via = "RF" if "qAR" in path or "WIDE" in path else ("APRS-IS" if "qAC" in path else path)
+        return {
+            "callsign": e.get("name"),
+            "last_time": e.get("lasttime"),
+            "age_s": age_s,
+            "age_str": _fmt_age(age_s),
+            "lat": e.get("lat"),
+            "lng": e.get("lng"),
+            "comment": e.get("comment", ""),
+            "path": path,
+            "via": via,
+            "symbol": e.get("symbol", ""),
+            "srccall": e.get("srccall", ""),
+            "running": age_s < 7200,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _fmt_age(s: int) -> str:
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s//60}min {s%60}s"
+    if s < 86400:
+        return f"{s//3600}h {(s%3600)//60}min"
+    return f"{s//86400}j {(s%86400)//3600}h"
+
+
+# ── CSV log reader ────────────────────────────────────────────────────────────
+
+LOG_DIR = Path("/opt/aprs-lite/logs")
+_LOG_HEADERS = ["chan","utime","isotime","source","heard","level","error","dti",
+                "name","symbol","latitude","longitude","speed","course","altitude",
+                "frequency","offset","tone","system","status","telemetry","comment"]
+
+
+def read_log_dates() -> list[str]:
+    """Return sorted list of available log dates (YYYY-MM-DD)."""
+    try:
+        dates = []
+        for f in LOG_DIR.glob("????-??-??.log"):
+            dates.append(f.stem)
+        return sorted(dates, reverse=True)
+    except Exception:
+        return []
+
+
+def read_log_frames(date_str: str, own_lat: float | None = None, own_lon: float | None = None) -> list[dict]:
+    """Parse a YYYY-MM-DD Direwolf CSV log into a list of frame dicts."""
+    import csv as _csv, re as _re
+    date_re = _re.compile(r'^\d{4}-\d{2}-\d{2}$')
+    if not date_re.match(date_str):
+        return []
+    log_file = LOG_DIR / f"{date_str}.log"
+    if not log_file.exists():
+        return []
+    rows = []
+    try:
+        with log_file.open(encoding="utf-8", errors="replace") as fh:
+            reader = _csv.DictReader(fh)
+            for row in reader:
+                try:
+                    lat = float(row["latitude"]) if row.get("latitude") else None
+                    lon = float(row["longitude"]) if row.get("longitude") else None
+                    dist = brg = None
+                    if lat is not None and lon is not None and own_lat is not None and own_lon is not None:
+                        dist, brg = haversine(own_lat, own_lon, lat, lon)
+                    # heard == source → direct; otherwise via digi
+                    origin = "rf" if row.get("source") == row.get("heard") else "rf_digi"
+                    rows.append({
+                        "timestamp": row.get("isotime", ""),
+                        "source": row.get("source") or row.get("name", ""),
+                        "heard_via": row.get("heard", ""),
+                        "level": row.get("level", ""),
+                        "symbol": row.get("symbol", ""),
+                        "lat": lat, "lon": lon,
+                        "speed": row.get("speed") or None,
+                        "course": row.get("course") or None,
+                        "altitude": row.get("altitude") or None,
+                        "comment": row.get("comment", ""),
+                        "system": row.get("system", ""),
+                        "origin": origin,
+                        "distance_km": dist,
+                        "bearing_deg": brg,
+                    })
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return rows
+
+
 def get_pi_info() -> dict:
     import platform
     info: dict = {}
@@ -195,6 +348,7 @@ def get_pi_info() -> dict:
     info["kernel"] = platform.release()
     info["arch"] = platform.machine()
     info["hostname"] = socket.gethostname()
+    info["direwolf_version"] = get_direwolf_version()
     try:
         lines = Path("/proc/meminfo").read_text().splitlines()
         mem = {l.split(":")[0]: int(l.split()[1]) for l in lines if ":" in l and len(l.split()) >= 2}
@@ -278,6 +432,357 @@ def get_audio_info() -> dict:
     return info
 
 
+# ── Config write ─────────────────────────────────────────────────────────────
+
+CONFIG_PATH = Path("/opt/aprs-lite/config.env")
+DIREWOLF_CONF = Path("/opt/aprs-lite/direwolf.conf")
+
+EDITABLE_KEYS = {
+    "CALLSIGN", "PASSCODE", "LAT", "LON", "COMMENT",
+    "TXDELAY", "ADEVICE", "PTT", "ARATE",
+    "IGSERVER", "IGFILTER_KM",
+    "LOG_DIR", "LOG_RETENTION_DAYS",
+    "REBOOT_DAY", "REBOOT_HOUR",
+    "SENSOR_ENABLED", "SENSOR_INTERVAL", "WX_ENABLED",
+}
+
+
+def save_config_key(key: str, value: str) -> bool:
+    """Write a single key=value to config.env (in-place replace)."""
+    if key not in EDITABLE_KEYS:
+        return False
+    try:
+        text = CONFIG_PATH.read_text(encoding="utf-8")
+        pattern = re.compile(rf'^({re.escape(key)}\s*=\s*).*', re.MULTILINE)
+        if pattern.search(text):
+            text = pattern.sub(rf'\g<1>"{value}"', text)
+        else:
+            text += f'\n{key}="{value}"\n'
+        CONFIG_PATH.write_text(text, encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def save_config_bulk(data: dict) -> tuple[bool, str]:
+    """Write multiple keys at once; returns (ok, error_msg)."""
+    try:
+        text = CONFIG_PATH.read_text(encoding="utf-8")
+        for key, value in data.items():
+            if key not in EDITABLE_KEYS:
+                continue
+            pattern = re.compile(rf'^({re.escape(key)}\s*=\s*).*', re.MULTILINE)
+            if pattern.search(text):
+                text = pattern.sub(rf'\g<1>"{value}"', text)
+            else:
+                text += f'\n{key}="{value}"\n'
+        CONFIG_PATH.write_text(text, encoding="utf-8")
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+# ── Direwolf / service actions ────────────────────────────────────────────────
+
+def restart_direwolf() -> tuple[bool, str]:
+    try:
+        r = subprocess.run(
+            ["sudo", "/bin/systemctl", "restart", "aprs-direwolf"],
+            capture_output=True, text=True, timeout=20
+        )
+        return r.returncode == 0, r.stderr.strip()
+    except Exception as e:
+        return False, str(e)
+
+
+def detect_aioc_full() -> dict:
+    try:
+        import sys
+        sys.path.insert(0, "/opt/aprs-lite")
+        from aioc_detect import full_detect
+        return full_detect()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ── Beacon / packet sending ───────────────────────────────────────────────────
+
+def _kiss_port_open() -> bool:
+    try:
+        s = socket.create_connection(("127.0.0.1", 8001), timeout=2)
+        s.close()
+        return True
+    except Exception:
+        return False
+
+
+def _make_beacon_packet(config: dict) -> str:
+    callsign = config.get("CALLSIGN", "N0CALL")
+    comment = config.get("COMMENT", "APRS Relay")
+    try:
+        lat = float(config.get("LAT", "0"))
+        lon = float(config.get("LON", "0"))
+        ld, lm = int(abs(lat)), (abs(lat) % 1) * 60
+        od, om = int(abs(lon)), (abs(lon) % 1) * 60
+        ls = f"{ld:02d}{lm:05.2f}{'N' if lat >= 0 else 'S'}"
+        os_ = f"{od:03d}{om:05.2f}{'E' if lon >= 0 else 'W'}"
+        return f"{callsign}>APNW01,WIDE1-1:!{ls}/{os_}# {comment}"
+    except Exception:
+        return f"{callsign}>APNW01,WIDE1-1:!0000.00N/00000.00W# {comment}"
+
+
+def make_weather_packet(callsign: str, lat: float, lon: float, data: dict) -> str:
+    ld, lm = int(abs(lat)), (abs(lat) % 1) * 60
+    od, om = int(abs(lon)), (abs(lon) % 1) * 60
+    ls = f"{ld:02d}{lm:05.2f}{'N' if lat >= 0 else 'S'}"
+    os_ = f"{od:03d}{om:05.2f}{'E' if lon >= 0 else 'W'}"
+    tf = round(data["temperature"] * 9 / 5 + 32)
+    hh = int(data["humidity"]) % 100
+    bp = min(99999, round(data["pressure"] * 10))
+    wx = f"c...s...g...t{tf:03d}h{hh:02d}b{bp:05d}"
+    extras = []
+    if data.get("iaq", -1) >= 0:
+        extras.append(f"IAQ={data['iaq']:.0f}/{data.get('iaq_accuracy', 0)}")
+    if data.get("co2_eq", -1) > 0:
+        extras.append(f"CO2={data['co2_eq']:.0f}ppm")
+    if data.get("voc_eq", -1) > 0:
+        extras.append(f"VOC={data['voc_eq']:.2f}ppm")
+    if extras:
+        wx += " " + " ".join(extras)
+    elif data.get("gas"):
+        wx += f" Gas:{data['gas']}ohm"
+    return f"{callsign}>APNW01,WIDE1-1:!{ls}/{os_}_{wx}"
+
+
+def send_kiss_packet(packet: str) -> tuple[bool, str]:
+    """Send an APRS packet via kissutil to Direwolf KISS port 8001."""
+    if not _kiss_port_open():
+        return False, "Port KISS 8001 inaccessible"
+    try:
+        r = subprocess.run(
+            ["kissutil", "-h", "127.0.0.1", "-p", "8001"],
+            input=packet + "\n",
+            capture_output=True, text=True, timeout=5
+        )
+        return (True, "") if r.returncode == 0 else (False, r.stderr.strip() or "kissutil erreur")
+    except FileNotFoundError:
+        return False, "kissutil non installé"
+    except Exception as e:
+        return False, str(e)
+
+
+# ── WiFi ─────────────────────────────────────────────────────────────────────
+
+def wifi_scan() -> list[str]:
+    try:
+        r = subprocess.run(
+            ["sudo", "/usr/sbin/iwlist", "wlan0", "scan"],
+            capture_output=True, text=True, timeout=15
+        )
+        return sorted(set(m.group(1) for m in re.finditer(r'ESSID:"(.+?)"', r.stdout)))
+    except Exception:
+        return []
+
+
+def wifi_current() -> str:
+    try:
+        r = subprocess.run(["iwgetid", "wlan0", "--raw"], capture_output=True, text=True, timeout=3)
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def wifi_connect(ssid: str, password: str) -> tuple[bool, str]:
+    conf = (
+        'ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev\n'
+        'update_config=1\ncountry=FR\n\n'
+        f'network={{\n    ssid="{ssid}"\n    psk="{password}"\n}}\n'
+    )
+    try:
+        subprocess.run(
+            ["sudo", "/usr/bin/tee", "/etc/wpa_supplicant/wpa_supplicant.conf"],
+            input=conf, text=True, capture_output=True, timeout=5
+        )
+        subprocess.run(["sudo", "/sbin/wpa_cli", "-i", "wlan0", "reconfigure"],
+                       capture_output=True, timeout=10)
+        for _ in range(15):
+            time.sleep(1)
+            if wifi_current() == ssid:
+                return True, f"Connecté à {ssid}"
+        return False, "Échec — SSID/MDP incorrect ?"
+    except Exception as e:
+        return False, str(e)
+
+
+def wifi_disconnect() -> tuple[bool, str]:
+    try:
+        subprocess.run(["sudo", "/sbin/ip", "link", "set", "wlan0", "down"], timeout=5)
+        time.sleep(1)
+        subprocess.run(["sudo", "/sbin/ip", "link", "set", "wlan0", "up"], timeout=5)
+        return True, "Déconnecté"
+    except Exception as e:
+        return False, str(e)
+
+
+# ── Clock / NTP ───────────────────────────────────────────────────────────────
+
+def ntp_sync() -> tuple[bool, str]:
+    try:
+        subprocess.run(
+            ["sudo", "/bin/systemctl", "restart", "systemd-timesyncd"],
+            timeout=10, capture_output=True
+        )
+        return True, "NTP relancé"
+    except Exception as e:
+        return False, str(e)
+
+
+def clock_set(value: str) -> tuple[bool, str]:
+    if not re.match(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$', value):
+        return False, "Format invalide (attendu : YYYY-MM-DD HH:MM:SS)"
+    try:
+        subprocess.run(["sudo", "/bin/date", "-s", value], capture_output=True, timeout=5)
+        return True, f"Heure réglée : {value}"
+    except Exception as e:
+        return False, str(e)
+
+
+# ── BME280/BME68x sensor ──────────────────────────────────────────────────────
+
+def get_sensor_data() -> dict:
+    try:
+        import sys
+        sys.path.insert(0, "/opt/aprs-lite")
+        from bme_sensor import open_sensor
+        sensor, chip = open_sensor()
+        data = sensor.read()
+        sensor.close()
+        if data is None:
+            return {"ok": False, "chip": chip, "error": "En attente première mesure BSEC2"}
+        data["ok"] = True
+        data["chip"] = chip
+        return data
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+# ── direwolf.conf ────────────────────────────────────────────────────────────
+
+DIREWOLF_CONF_KEYS = {
+    "MYCALL", "MODEM", "PTT", "TXDELAY", "SLOTTIME", "PERSIST",
+    "DWAIT", "TXTAIL", "DIGIPEAT", "DEDUPE", "IGSERVER", "IGLOGIN",
+    "IGFILTER", "PBEACON",
+}
+
+
+def parse_direwolf_conf() -> dict:
+    result: dict = {}
+    try:
+        text = DIREWOLF_CONF.read_text(encoding="utf-8", errors="replace")
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(None, 1)
+            if len(parts) >= 1:
+                key = parts[0].upper()
+                value = parts[1] if len(parts) > 1 else ""
+                if key in DIREWOLF_CONF_KEYS:
+                    result[key] = value
+    except Exception:
+        pass
+    return result
+
+
+def write_direwolf_conf_raw(content: str) -> tuple[bool, str]:
+    try:
+        DIREWOLF_CONF.write_text(content, encoding="utf-8")
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+# ── Audio level streaming ──────────────────────────────────────────────────
+
+def stream_audio_levels():
+    import struct as _struct
+    import json as _json
+    try:
+        proc = subprocess.Popen(
+            ["arecord", "-D", "plughw:AllInOneCable,0", "-f", "S16_LE", "-r", "48000", "-c", "1", "-q"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        yield 'data: {"error": "arecord non disponible"}\n\n'
+        return
+    buf_size = 4096
+    buf = b""
+    last_emit = time.time()
+    try:
+        while True:
+            chunk = proc.stdout.read(buf_size)
+            if not chunk:
+                break
+            buf += chunk
+            now = time.time()
+            if now - last_emit >= 0.2:
+                samples = _struct.unpack(f"<{len(buf)//2}h", buf[:len(buf)//2*2])
+                if samples:
+                    rms = (sum(s * s for s in samples) / len(samples)) ** 0.5
+                    db = 20 * __import__("math").log10(rms / 32768.0 + 1e-9)
+                    yield f'data: {_json.dumps({"rms": round(rms, 2), "db": round(db, 2)})}\n\n'
+                buf = b""
+                last_emit = now
+    except GeneratorExit:
+        pass
+    finally:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+
+
+# ── System events streaming (watchdog log) ────────────────────────────────
+
+WATCHDOG_LOG = Path("/opt/aprs-lite/logs/watchdog.log")
+_LOG_RE = re.compile(r'^(\S+\s+\S+)\s+(\w+)\s+(.*)')
+
+
+def stream_system_events():
+    import json as _json
+    if not WATCHDOG_LOG.exists():
+        yield f'data: {_json.dumps({"error": "watchdog.log introuvable"})}\n\n'
+        time.sleep(5)
+        return
+    try:
+        proc = subprocess.Popen(
+            ["tail", "-f", str(WATCHDOG_LOG)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        for line in proc.stdout:
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            m = _LOG_RE.match(line)
+            if m:
+                event = {"ts": m.group(1), "level": m.group(2), "message": m.group(3)}
+            else:
+                event = {"ts": "", "level": "INFO", "message": line}
+            try:
+                yield f'data: {_json.dumps(event)}\n\n'
+            except GeneratorExit:
+                proc.terminate()
+                return
+        proc.terminate()
+    except Exception as exc:
+        yield f'data: {_json.dumps({"error": str(exc)})}\n\n'
+
+
 def system_snapshot(service_name: str) -> dict:
     return {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -352,6 +857,18 @@ class JournalCollector:
     def _handle_frame(self, raw_frame: str, origin: str):
         parsed = parse_aprs_frame(raw_frame)
         parsed["origin"] = origin
+        # Haversine distance/bearing from own station
+        try:
+            own_lat = float(self.state.config_cache.get("LAT", ""))
+            own_lon = float(self.state.config_cache.get("LON", ""))
+            frame_lat = parsed.get("lat")
+            frame_lon = parsed.get("lon")
+            if frame_lat is not None and frame_lon is not None:
+                dist, brg = haversine(own_lat, own_lon, frame_lat, frame_lon)
+                parsed["distance_km"] = dist
+                parsed["bearing_deg"] = brg
+        except Exception:
+            pass
         row_id = self.db.insert_frame(parsed)
         if row_id == -1:
             return

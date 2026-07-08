@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>APRS Lite Sidecar Dashboard</title>
+<title>APRS Lite Supervision</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 {% if socketio_enabled %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
 {% endif %}
@@ -37,7 +38,6 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 .sb-toggle:hover{background:var(--g);color:var(--b0)}
 @media(max-width:800px){.main{flex-direction:column}.resizer{width:100%;height:5px;cursor:row-resize}.sb{width:100%!important;max-width:100%;height:40vh;min-height:0}}
 /* Map */
-.mapc{position:relative}
 #map{width:100%;height:100%;background:var(--b0)}
 .leaflet-container{background:var(--b0)!important}
 .mov{position:absolute;top:10px;left:55px;z-index:1000;display:flex;gap:6px;flex-wrap:wrap;max-width:calc(100% - 140px)}
@@ -47,8 +47,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 .tl-pill{background:rgba(10,14,20,.85);border-radius:4px;padding:4px 8px;font-size:10px}
 .map-ctrl{position:absolute;top:10px;right:10px;z-index:1000}
 .map-ctrl select{background:rgba(10,14,20,.9);color:var(--t1);border:1px solid var(--bd);border-radius:4px;padding:4px 8px;font-size:11px;font-family:inherit}
-/* Sidebar */
-.sb{display:flex;flex-direction:column;background:var(--b1);border-left:1px solid var(--bd);overflow:hidden}
+/* Sidebar tabs/content */
 .tabs{display:flex;border-bottom:1px solid var(--bd);overflow-x:auto;flex-shrink:0}
 .tab{padding:9px 9px;background:none;border:none;color:var(--t3);font-family:'Exo 2',sans-serif;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
 .tab.on{color:var(--g);border-bottom-color:var(--g)}
@@ -72,7 +71,7 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 .fi.hp{border-left:3px solid var(--g)}
 .fi.np{border-left:3px solid var(--t3)}
 .fi.ip{border-left:3px solid var(--bl)}
-.fi.dp{border-left:3px solid var(--am)}
+.fi.digi{border-left:3px solid var(--am)}
 @keyframes si{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 .fh{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
 .fc{font-weight:700;color:var(--bl);font-size:12px}
@@ -90,11 +89,30 @@ body{font-family:'JetBrains Mono',monospace;background:var(--b0);color:var(--t1)
 /* Monitor log */
 .mon-log{flex:1;overflow-y:auto;padding:6px 8px;font-size:10px;line-height:1.5;background:var(--b0);font-family:'JetBrains Mono',monospace}
 .mon-line{white-space:pre-wrap;word-break:break-all;border-bottom:1px solid rgba(30,42,58,.3);padding:1px 0}
+.mon-rf{color:#00ff88}.mon-tx{color:#ffaa00}.mon-ig{color:#4db8ff}.mon-is{color:#00ccff}.mon-err{color:#ff4466}.mon-txt{color:var(--t2)}
 /* Stations */
 .sg{padding:10px;display:grid;grid-template-columns:1fr 1fr;gap:5px;overflow-y:auto}
 .sc{padding:5px 8px;background:var(--b3);border:1px solid var(--bd);border-radius:5px;font-size:11px;color:var(--bl);text-align:center;cursor:pointer;transition:all .15s}
 .sc:hover{border-color:var(--bl);background:rgba(0,170,255,.08)}
 .sc .cnt{font-size:9px;color:var(--t3);display:block}
+/* Action buttons */
+.act-btn{padding:4px 10px;border-radius:4px;border:1px solid var(--bd);background:var(--b3);color:var(--t1);font-size:10px;cursor:pointer;transition:all .15s}
+.act-btn:hover{border-color:var(--bl);background:rgba(0,170,255,.1)}
+.act-btn:disabled{opacity:.4;cursor:not-allowed}
+.act-btn.act-ok{border-color:var(--g);color:var(--g)}.act-btn.act-ok:hover{background:rgba(0,255,136,.1)}
+.act-btn.act-warn{border-color:var(--am);color:var(--am)}.act-btn.act-warn:hover{background:rgba(255,170,0,.1)}
+/* Forms */
+.frm-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.frm-lbl{min-width:120px;font-size:10px;color:var(--t3);flex-shrink:0}
+.frm-in{flex:1;background:var(--b0);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-size:11px;padding:4px 7px;outline:none;font-family:inherit}
+.frm-in:focus{border-color:var(--bl)}
+select.frm-in{appearance:none;-webkit-appearance:none}
+.frm-sep{border-top:1px solid var(--bd);margin:10px 0}
+/* Sensor display */
+.sx-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sx-val{text-align:center;background:var(--b3);border-radius:6px;padding:8px 4px}
+.sx-num{font-size:20px;font-weight:700;color:var(--bl)}
+.sx-unit{font-size:9px;color:var(--t3);margin-top:2px}
 /* Generic panels */
 .panel{padding:10px;overflow-y:auto;flex:1}
 .sys-section{margin-bottom:14px}
@@ -118,6 +136,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
 .audio-lbl{color:var(--t3);margin-bottom:2px;font-size:9px;text-transform:uppercase}
 .audio-ok{color:var(--g);font-weight:600}.audio-err{color:var(--rd);font-weight:600}
 .audio-sub{font-size:9px;color:var(--t3);margin-top:2px}
+/* Config section headers */
+.cfg-section-hdr{font-family:'Exo 2',sans-serif;font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;padding:5px 0 3px;border-bottom:1px solid var(--bd);margin-bottom:6px}
 /* Terminal */
 .term-bar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--b0);border-bottom:1px solid var(--bd);flex-shrink:0}
 .term-status{font-size:10px;color:var(--t3)}
@@ -136,26 +156,50 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
 .stats-bar .sl{font-size:10px;color:var(--t3)}.stats-bar .sv{font-size:16px;font-weight:600}
 /* Scrollbar */
 ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:var(--b1)}::-webkit-scrollbar-thumb{background:var(--b2);border-radius:3px}
+/* Frame filter buttons */
+.flt-btn{padding:2px 8px;border-radius:4px;border:1px solid var(--bd);background:var(--b3);color:var(--t3);font-size:10px;cursor:pointer;font-family:inherit;transition:all .15s}
+.flt-btn.on{border-color:var(--g);color:var(--g);background:rgba(0,255,136,.1)}
+.flt-btn:hover{color:var(--t1)}
+/* APRS sprite icon */
+.aprs-sp{display:inline-block;width:24px;height:24px;image-rendering:pixelated}
 /* Map markers */
-.aprs-mk{background:none;border:none}
-.mk-dot{width:10px;height:10px;background:var(--g);border:2px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(0,255,136,.5)}
-.mk-lbl{position:absolute;top:12px;left:50%;transform:translateX(-50%);white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;color:#fff;text-shadow:0 0 3px #000,0 0 2px #000;pointer-events:none}
+.map-flt-btn{background:rgba(10,14,20,.82);border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:2px 7px;cursor:pointer;font-family:inherit;transition:all .15s}
+.map-flt-btn.on{background:rgba(10,14,20,.82);border-color:var(--t1);color:#fff;font-weight:700}
+.map-flt-btn:hover{color:var(--t1)}
+.aprs-mk{background:none!important;border:none!important;overflow:visible!important}
+.mk-wrap{position:relative;display:flex;flex-direction:column;align-items:center;pointer-events:auto}
+.mk-dot{width:16px;height:16px;border-radius:50%;flex-shrink:0}
+.mk-sprite{width:24px;height:24px;image-rendering:pixelated;border-radius:3px;flex-shrink:0;position:relative}
+.mk-overlay{position:absolute;top:-2px;right:-2px;width:11px;height:11px;border-radius:2px;font-size:7px;line-height:11px;text-align:center;font-weight:900;color:#fff;background:rgba(0,0,0,.9)}
+.mk-lbl{margin-top:3px;white-space:nowrap;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;color:#fff!important;background:rgba(0,0,0,.82);pointer-events:none;border:1px solid rgba(255,255,255,.25);text-shadow:0 1px 2px #000}
 .leaflet-popup-content-wrapper{background:var(--b3)!important;color:var(--t1)!important;border:1px solid var(--g)!important;border-radius:6px!important;font-family:'JetBrains Mono',monospace!important;box-shadow:0 0 15px rgba(0,255,136,.12)!important}
 .leaflet-popup-tip{background:var(--b3)!important}
 .pp-c{font-size:13px;font-weight:700;color:var(--g);margin-bottom:3px}
 .pp-i{font-size:10px;color:var(--t2);line-height:1.5}
+/* Analyse tab */
+.an-period{background:var(--b3);border:1px solid var(--bd);border-radius:3px;color:var(--t3);font-size:10px;padding:2px 7px;cursor:pointer;font-family:inherit;transition:all .15s}
+.an-period.on{background:rgba(10,14,20,.82);border-color:var(--t1);color:#fff;font-weight:700}
+.an-card{background:var(--b3);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;text-align:center}
+.an-val{font-family:'Exo 2',sans-serif;font-size:20px;font-weight:700;color:var(--t1)}
+.an-lbl{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.an-tbl{width:100%;border-collapse:collapse;font-size:10px}
+.an-tbl th{padding:5px 6px;background:var(--b0);color:var(--t3);text-align:left;font-weight:600;cursor:pointer;position:sticky;top:0;z-index:1;white-space:nowrap;user-select:none;border-bottom:1px solid var(--bd)}
+.an-tbl th:hover{color:var(--t1)}
+.an-tbl td{padding:4px 6px;border-bottom:1px solid var(--bd);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px}
+.an-tbl tr:hover td{background:var(--b2)}
 </style>
 </head>
 <body>
 <header class="hdr">
   <div class="hdr-l">
     <div class="dot" id="dot"></div>
-    <div class="logo">APRS LITE SIDECAR<span>{{ config.callsign }} — read only</span></div>
+    <div class="logo">APRS LITE SUPERVISION<span><a href="https://aprs.fi/#!call={{ config.callsign }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:4px"><img src="/static/aprsfi-favicon.ico" width="12" height="12" style="vertical-align:middle;border-radius:2px"> aprs.fi</a></span></div>
   </div>
   <div class="hdr-s">
     <div>TRAMES <span class="v" id="hT">0</span></div>
     <div>STATIONS <span class="v" id="hS">0</span></div>
     <div>UPTIME <span class="v" id="hU">--</span></div>
+    <form method="post" action="/logout" style="margin:0"><button type="submit" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit">⏻ Déconnexion</button></form>
   </div>
 </header>
 <div class="main">
@@ -173,13 +217,35 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
       <div class="tl-pill" style="color:#FAC775" id="tlD">--%</div>
       <div class="tl-pill" style="color:#F09595" id="tlL">load --</div>
     </div>
-    <div class="map-ctrl">
+    <div class="map-ctrl" style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
       <select id="mapSelect" onchange="switchMap(this.value)">
         <option value="opentopo">OpenTopoMap</option>
         <option value="dark">CartoDB Dark</option>
         <option value="osm">OpenStreetMap</option>
         <option value="satellite">Satellite</option>
       </select>
+      <!-- Filtre carte -->
+      <div style="display:flex;gap:4px">
+        <button class="map-flt-btn on" data-mf="all" onclick="setMapFlt('all')" title="Toutes les stations">Tout</button>
+        <button class="map-flt-btn" data-mf="rf" onclick="setMapFlt('rf')" title="RF seulement">RF</button>
+        <button class="map-flt-btn" data-mf="is" onclick="setMapFlt('is')" title="iGate IS seulement">IS</button>
+        <button class="map-flt-btn" data-mf="igtx" onclick="setMapFlt('igtx')" title="IS→RF relay">iGTX</button>
+      </div>
+      <!-- Légende couleurs + bouton icônes -->
+      <div style="background:rgba(10,14,20,.88);border:1px solid var(--bd);border-radius:5px;padding:5px 8px;font-size:10px;backdrop-filter:blur(6px);line-height:1.7">
+        <div><span style="color:#00ff88;font-size:13px">●</span> RF reçu</div>
+        <div><span style="color:#aaff00;font-size:13px">●</span> RF digipeaté</div>
+        <div><span style="color:#00aaff;font-size:13px">●</span> IS / iGate</div>
+        <div><span style="color:#ffaa00;font-size:13px">●</span> IS→RF relay</div>
+        <div style="border-top:1px solid var(--bd);margin-top:4px;padding-top:4px;text-align:center">
+          <button onclick="toggleIconLegend()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:10px;font-family:inherit;padding:0">🗺 Icônes APRS</button>
+        </div>
+      </div>
+      <!-- Panneau légende icônes APRS -->
+      <div id="iconLegend" style="display:none;background:rgba(10,14,20,.95);border:1px solid var(--bd);border-radius:5px;padding:6px;backdrop-filter:blur(8px);max-height:260px;overflow-y:auto;width:220px">
+        <div style="font-size:9px;color:var(--t3);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px">Symboles APRS courants</div>
+        <div id="iconLegendGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px"></div>
+      </div>
     </div>
   </div>
 
@@ -191,13 +257,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
   <!-- Sidebar -->
   <div class="sb" id="sidebar">
     <div class="tabs">
-      <button class="tab on" data-t="principal">Principal</button>
-      <button class="tab" data-t="config">Config</button>
-      <button class="tab" data-t="wifi">WiFi</button>
-      <button class="tab" data-t="horloge">Horloge</button>
-      <button class="tab" data-t="meteo">Météo</button>
-      <button class="tab" data-t="systeme">Système</button>
-      <button class="tab" data-t="terminal">Terminal</button>
+      <button class="tab on" data-t="principal">📻 Principal</button>
+      <button class="tab" data-t="analyse">📊 Analyse</button>
+      <button class="tab" data-t="config">⚙️ Config</button>
+      <button class="tab" data-t="meteo">🌤 Météo</button>
+      <button class="tab" data-t="systeme">🖥 Système</button>
+      <button class="tab" data-t="terminal">💻 Terminal</button>
     </div>
 
     <!-- ══ PRINCIPAL ══ -->
@@ -207,14 +272,26 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <span class="rf-pill">RF-TX <span id="rfTx" style="color:var(--am)">0</span></span>
         <span class="rf-pill">IS-RX <span id="rfIs" style="color:var(--bl)">0</span></span>
         <span class="rf-pill">Beacons <span id="rfBcn" style="color:var(--t2)">0</span></span>
+        <input id="globalSearch" placeholder="🔍 Recherche…" oninput="globalSearchHandler()" style="flex:1;min-width:60px;background:var(--b3);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-size:10px;padding:3px 6px;outline:none;font-family:inherit">
+        <button class="act-btn" onclick="sendBeacon()" title="Envoyer beacon APRS">📡</button>
+        <button class="act-btn act-warn" onclick="restartDirewolf()" title="Redémarrer Direwolf">↺</button>
       </div>
-      <div class="ptabs">
-        <button class="ptab on" data-p="frames">Trames</button>
-        <button class="ptab" data-p="stations">Stations</button>
-        <button class="ptab" data-p="monitor">Monitor</button>
+      <div id="actionMsg" style="display:none;padding:3px 8px;font-size:10px;border-radius:3px;margin:2px 8px"></div>
+      <div class="ptabs" style="align-items:center">
+        <button class="ptab on" data-p="frames">📡 Trames</button>
+        <button class="ptab" data-p="stations">📍 Stations</button>
+        <button class="ptab" data-p="monitor">🖥 Monitor</button>
+        <span style="flex:1"></span>
+        <button id="pauseBtn" onclick="togglePause()" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t2);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;margin-right:4px;transition:all .2s">⏸ Pause</button>
       </div>
       <!-- Trames -->
       <div class="pview on" id="pv-frames">
+        <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:var(--b0);border-bottom:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap">
+          <button class="flt-btn on" data-flt="all" onclick="setFlt('all')">Tout</button>
+          <button class="flt-btn" data-flt="rf" onclick="setFlt('rf')">RF</button>
+          <button class="flt-btn" data-flt="is" onclick="setFlt('is')">IS</button>
+          <button class="flt-btn" data-flt="igtx" onclick="setFlt('igtx')">iGTX</button>
+        </div>
         <div class="dp" id="fDet"></div>
         <div class="fl" id="fList"></div>
       </div>
@@ -228,29 +305,207 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
       </div>
     </div>
 
-    <!-- ══ CONFIG ══ -->
+    <!-- ══ ANALYSE ══ -->
+    <div class="tc" id="t-analyse" style="flex-direction:column;overflow:hidden">
+      <!-- Sous-onglets -->
+      <div class="ptabs" style="align-items:center">
+        <button class="ptab antab on" data-av="stats">📊 Stats</button>
+        <button class="ptab antab" data-av="historique">📅 Historique</button>
+      </div>
+
+      <!-- ── Vue Stats ── -->
+      <div class="pview on" id="av-stats" style="flex-direction:column;overflow:hidden">
+        <!-- Barre période + exports -->
+        <div style="display:flex;align-items:center;gap:4px;padding:5px 8px;background:var(--b0);border-bottom:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--t3)">Période :</span>
+          <button class="an-period on" data-h="1" onclick="setAnalysePeriod(this)">1h</button>
+          <button class="an-period" data-h="2" onclick="setAnalysePeriod(this)">2h</button>
+          <button class="an-period" data-h="4" onclick="setAnalysePeriod(this)">4h</button>
+          <button class="an-period" data-h="6" onclick="setAnalysePeriod(this)">6h</button>
+          <button class="an-period" data-h="12" onclick="setAnalysePeriod(this)">12h</button>
+          <button class="an-period" data-h="24" onclick="setAnalysePeriod(this)">24h</button>
+          <button class="an-period" data-h="all" onclick="setAnalysePeriod(this)">Tout</button>
+          <span style="flex:1"></span>
+          <button onclick="exportAnalysisCsv()" title="Export CSV (période)" style="background:none;border:1px solid var(--bd);border-radius:3px;color:var(--g);font-size:9px;padding:1px 6px;cursor:pointer;font-family:inherit">⬇ CSV</button>
+          <button onclick="exportFullCsv()" title="Export CSV (BDD complète)" style="background:none;border:1px solid var(--bd);border-radius:3px;color:var(--bl);font-size:9px;padding:1px 6px;cursor:pointer;font-family:inherit">⬇ BDD</button>
+          <button onclick="loadAnalyse()" style="background:none;border:1px solid var(--bd);border-radius:3px;color:var(--t3);font-size:9px;padding:1px 6px;cursor:pointer;font-family:inherit">↺</button>
+        </div>
+        <!-- Cartes stats -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px;flex-shrink:0">
+          <div class="an-card"><div class="an-val" id="anTotal">--</div><div class="an-lbl">Trames total</div></div>
+          <div class="an-card"><div class="an-val" id="anStations">--</div><div class="an-lbl">Stations vues</div></div>
+          <div class="an-card" style="grid-column:1/-1">
+            <div style="display:flex;justify-content:space-around">
+              <div style="text-align:center"><div class="an-val" id="anRf" style="color:#00ff88">--</div><div class="an-lbl">RF direct</div></div>
+              <div style="text-align:center"><div class="an-val" id="anDigi" style="color:#aaff00">--</div><div class="an-lbl">RF digi</div></div>
+              <div style="text-align:center"><div class="an-val" id="anIs" style="color:#00aaff">--</div><div class="an-lbl">IS</div></div>
+              <div style="text-align:center"><div class="an-val" id="anIgtx" style="color:#ffaa00">--</div><div class="an-lbl">iGTX</div></div>
+            </div>
+          </div>
+        </div>
+        <!-- En-tête table -->
+        <div style="padding:0 8px 4px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:10px;font-family:'Exo 2',sans-serif;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">Stations <span id="anStCount" style="color:var(--t3);font-weight:400"></span></span>
+          <input id="anSearch" placeholder="Recherche…" oninput="renderAnalyseTable()" style="background:var(--b3);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-size:10px;padding:3px 6px;outline:none;font-family:inherit;width:110px">
+        </div>
+        <!-- Table stations -->
+        <div style="overflow-y:auto;flex:1;min-height:0">
+          <table class="an-tbl">
+            <thead><tr>
+              <th onclick="sortAnalyse('callsign')"><span id="anSh-callsign">Indicatif</span></th>
+              <th onclick="sortAnalyse('frame_count')"><span id="anSh-frame_count">Trames</span></th>
+              <th onclick="sortAnalyse('is_mobile')"><span id="anSh-is_mobile">Type</span></th>
+              <th onclick="sortAnalyse('has_direct')"><span id="anSh-has_direct">Via</span></th>
+              <th onclick="sortAnalyse('last_seen')"><span id="anSh-last_seen">Dernière vue ▾</span></th>
+              <th onclick="sortAnalyse('distance_km')"><span id="anSh-distance_km">Dist.</span></th>
+              <th onclick="sortAnalyse('bearing_deg')"><span id="anSh-bearing_deg">Az.</span></th>
+            </tr></thead>
+            <tbody id="anTbody"><tr><td colspan="7" style="text-align:center;padding:16px;color:var(--t3)">Sélectionnez une période…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── Vue Historique CSV ── -->
+      <div class="pview" id="av-historique" style="flex-direction:column;overflow:hidden">
+        <div style="display:flex;align-items:center;gap:6px;padding:5px 8px;background:var(--b0);border-bottom:1px solid var(--bd);flex-shrink:0;flex-wrap:wrap">
+          <select id="histoDateSel" onchange="loadLogFrames()" style="background:var(--b3);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-size:10px;padding:3px 6px;font-family:inherit">
+            <option value="">Choisir une date…</option>
+          </select>
+          <span id="histoCount" style="font-size:10px;color:var(--t3)"></span>
+          <span style="flex:1"></span>
+          <button onclick="exportHistoCsv()" title="Export CSV du fichier affiché" style="background:none;border:1px solid var(--bd);border-radius:3px;color:var(--g);font-size:9px;padding:1px 6px;cursor:pointer;font-family:inherit">⬇ CSV</button>
+          <input id="histoSearch" placeholder="Recherche…" oninput="renderHistoFrames()" style="background:var(--b3);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-size:10px;padding:3px 6px;outline:none;font-family:inherit;width:100px">
+        </div>
+        <div class="fl" id="histoList"></div>
+      </div>
+    </div>
+
+    <!-- ══ CONFIG (inclut WiFi, Horloge, Audio) ══ -->
     <div class="tc" id="t-config">
-      <div class="panel"><pre id="cfgRaw">Chargement…</pre></div>
-    </div>
+      <div class="panel" style="overflow-y:auto">
 
-    <!-- ══ WIFI ══ -->
-    <div class="tc" id="t-wifi">
-      <div class="panel" id="wifiPanel">Chargement…</div>
-    </div>
+        <!-- Section : Relais APRS -->
+        <div class="cfg-section-hdr">📡 Relais APRS</div>
+        <div class="frm-row"><span class="frm-lbl">Indicatif</span><input class="frm-in" id="cfg_CALLSIGN"></div>
+        <div class="frm-row"><span class="frm-lbl">Passcode</span><input class="frm-in" id="cfg_PASSCODE" type="number"></div>
+        <div class="frm-row"><span class="frm-lbl">Latitude</span><input class="frm-in" id="cfg_LAT" placeholder="43.3180"></div>
+        <div class="frm-row"><span class="frm-lbl">Longitude</span><input class="frm-in" id="cfg_LON" placeholder="-0.3315"></div>
+        <div class="frm-row"><span class="frm-lbl">Commentaire</span><input class="frm-in" id="cfg_COMMENT"></div>
+        <div class="frm-sep"></div>
+        <div class="frm-row"><span class="frm-lbl">Serveur iGate</span><input class="frm-in" id="cfg_IGSERVER" placeholder="euro.aprs2.net"></div>
+        <div class="frm-row"><span class="frm-lbl">Filtre iGate (km)</span><input class="frm-in" id="cfg_IGFILTER_KM" type="number"></div>
+        <div class="frm-sep"></div>
+        <div class="frm-row"><span class="frm-lbl">TXDELAY (ms)</span><input class="frm-in" id="cfg_TXDELAY" type="number"></div>
+        <div class="frm-row"><span class="frm-lbl">ADEVICE</span><input class="frm-in" id="cfg_ADEVICE"></div>
+        <div class="frm-row"><span class="frm-lbl">PTT</span><input class="frm-in" id="cfg_PTT"></div>
+        <div class="frm-sep"></div>
+        <div class="frm-row"><span class="frm-lbl">Redémarrage</span>
+          <select class="frm-in" id="cfg_REBOOT_DAY">
+            <option value="disabled">Désactivé</option>
+            <option value="monday">Lundi</option><option value="tuesday">Mardi</option>
+            <option value="wednesday">Mercredi</option><option value="thursday">Jeudi</option>
+            <option value="friday">Vendredi</option><option value="saturday">Samedi</option>
+            <option value="sunday">Dimanche</option>
+          </select>
+        </div>
+        <div class="frm-row"><span class="frm-lbl">Heure redémarrage</span><input class="frm-in" id="cfg_REBOOT_HOUR" placeholder="03:00"></div>
+        <div class="frm-sep"></div>
+        <button class="act-btn act-ok" style="width:100%;margin:4px 0" onclick="saveConfig()">💾 Sauvegarder et redémarrer Direwolf</button>
+        <div id="cfgMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:4px"></div>
 
-    <!-- ══ HORLOGE ══ -->
-    <div class="tc" id="t-horloge">
-      <div class="panel" id="clockPanel">Chargement…</div>
+        <!-- Section : Audio / AIOC -->
+        <div class="cfg-section-hdr" style="margin-top:10px">🎙 Audio / AIOC</div>
+        <div id="audioCfgPanel" style="font-size:11px;color:var(--t3);margin-bottom:6px">Chargement…</div>
+        <button class="act-btn" onclick="detectAioc()" id="aiocDetectBtn">🔍 Détecter AIOC</button>
+        <div id="aiocMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:4px"></div>
+
+        <!-- Section : WiFi -->
+        <div class="cfg-section-hdr" style="margin-top:10px">📶 WiFi</div>
+        <button class="act-btn" onclick="wifiScan()" id="wifiScanBtn">🔍 Scanner</button>
+        <div id="wifiList" style="margin:6px 0;font-size:11px;min-height:20px">Appuyez sur Scanner…</div>
+        <div class="frm-row"><span class="frm-lbl">SSID</span><input class="frm-in" id="wifiSsid" placeholder="Nom du réseau"></div>
+        <div class="frm-row"><span class="frm-lbl">Mot de passe</span><input class="frm-in" id="wifiPwd" type="password" placeholder="Mot de passe"></div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="act-btn act-ok" style="flex:1" onclick="wifiConnect()">✔ Connecter</button>
+          <button class="act-btn act-warn" style="flex:1" onclick="wifiDisconnect()">✘ Déconnecter</button>
+        </div>
+        <div id="wifiMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:6px"></div>
+
+        <!-- Section : Horloge -->
+        <div class="cfg-section-hdr" style="margin-top:10px">🕐 Horloge</div>
+        <pre id="ntpStatus" style="font-size:10px;background:var(--b0);padding:6px;border-radius:4px;margin-bottom:6px;white-space:pre-wrap">Chargement…</pre>
+        <button class="act-btn act-ok" onclick="ntpSync()">↺ Synchroniser NTP</button>
+        <div class="frm-sep"></div>
+        <div style="font-size:10px;color:var(--t3);margin-bottom:4px">Réglage manuel — format : YYYY-MM-DD HH:MM:SS</div>
+        <div class="frm-row"><span class="frm-lbl">Date/heure</span><input class="frm-in" id="clockInput" placeholder="2026-07-08 12:00:00"></div>
+        <button class="act-btn act-warn" style="margin-top:4px" onclick="clockSet()">⚙ Appliquer</button>
+        <div id="clockMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:6px"></div>
+
+      </div>
     </div>
 
     <!-- ══ MÉTÉO ══ -->
     <div class="tc" id="t-meteo">
-      <div class="panel" id="meteoPanel">Chargement…</div>
+      <div class="panel" style="overflow-y:auto">
+        <div style="font-weight:600;margin-bottom:6px">Capteur BME280/BME68x</div>
+        <div id="sensorDisplay" style="background:var(--b0);border-radius:6px;padding:10px;margin-bottom:10px">
+          <div id="sensorData" style="font-size:12px;color:var(--t3)">Chargement…</div>
+        </div>
+        <button class="act-btn act-ok" onclick="sendWeather()" id="wxSendBtn">📡 Envoyer beacon météo maintenant</button>
+        <div id="wxMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:6px"></div>
+        <div class="frm-sep"></div>
+        <div style="font-weight:600;margin-bottom:4px">Dernier beacon météo reçu</div>
+        <div id="meteoPanel" style="font-size:11px;color:var(--t2)">Chargement…</div>
+      </div>
     </div>
 
-    <!-- ══ SYSTÈME (Pi info + Audio) ══ -->
-    <div class="tc" id="t-systeme">
-      <div class="panel" id="systemePanel">Chargement…</div>
+    <!-- ══ SYSTÈME (Pi info + Charts) ══ -->
+    <div class="tc" id="t-systeme" style="flex-direction:column;overflow-y:auto">
+      <div id="systemePanel" style="padding:10px;flex-shrink:0">Chargement…</div>
+      <!-- Clients connectés -->
+      <div style="padding:4px 10px 2px;border-top:1px solid var(--bd);flex-shrink:0;font-size:10px;color:var(--t3)">
+        👥 Clients dashboard : <span id="sysClients" style="color:var(--t2)">--</span>
+      </div>
+      <!-- Vue internet aprs.fi -->
+      <div style="padding:8px 10px;border-top:1px solid var(--bd);flex-shrink:0">
+        <div style="font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:8px">
+          🌐 Vue internet (aprs.fi)
+          <button onclick="loadAprsFi()" style="background:none;border:1px solid var(--bd);border-radius:3px;color:var(--t3);font-size:9px;padding:1px 6px;cursor:pointer;font-family:inherit">↺</button>
+          <span style="font-size:9px;color:var(--t3);font-weight:400">— nécessite APRSFI_KEY dans config.env</span>
+        </div>
+        <div id="aprsFiPanel" style="font-size:11px"><span style="color:var(--t3)">Ouvrir l'onglet Système pour charger…</span></div>
+      </div>
+      <div style="padding:8px 10px;border-top:1px solid var(--bd);flex-shrink:0">
+        <div style="font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Télémétrie 24h</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div style="display:flex;flex-direction:column">
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Temp CPU (°C)</div>
+            <div style="position:relative;height:70px"><canvas id="chTemp" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">RAM (%)</div>
+            <div style="position:relative;height:70px"><canvas id="chRam" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">CPU (%)</div>
+            <div style="position:relative;height:70px"><canvas id="chCpu" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Disque (%)</div>
+            <div style="position:relative;height:70px"><canvas id="chDisk" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+        </div>
+      </div>
+      <!-- Backup -->
+      <div style="padding:8px 10px;border-top:1px solid var(--bd);flex-shrink:0">
+        <div style="font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Sauvegarde / Restauration</div>
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <button class="act-btn act-ok" onclick="backupCreate()">💾 Créer sauvegarde</button>
+          <button class="act-btn" onclick="backupRefresh()">🔄 Rafraîchir</button>
+        </div>
+        <div id="backupMsg" style="font-size:11px;margin-bottom:4px"></div>
+        <div id="backupList" style="font-size:11px;max-height:120px;overflow-y:auto"></div>
+      </div>
     </div>
 
     <!-- ══ TERMINAL ══ -->
@@ -290,9 +545,167 @@ L.control.attribution({prefix:false,position:'bottomleft'}).addTo(map);
 function switchMap(k){if(curLayer)map.removeLayer(curLayer);const t=TILES[k]||TILES.opentopo;curLayer=L.tileLayer(t[0],{maxZoom:18,subdomains:k==='satellite'?'a':'abc'}).addTo(map);}
 switchMap('opentopo');
 
+// ── APRS Sprite Icons ────────────────────────────────────────────────────────
+function aprsIcon(table, code){
+  const idx = code.charCodeAt(0) - 33;
+  const col = idx % 16;
+  const row = Math.floor(idx / 16);
+  const x = col * 24;
+  const y = row * 24;
+  const img = table === '/' ? '/static/aprs-symbols-24-0.png' : '/static/aprs-symbols-24-1.png';
+  return L.divIcon({
+    className: 'aprs-mk',
+    html: `<div style="width:24px;height:24px;background:url('${img}') -${x}px -${y}px;image-rendering:pixelated"></div>`,
+    iconSize: [24,24],
+    iconAnchor: [12,12]
+  });
+}
+
+// ── Pause ────────────────────────────────────────────────────────────────────
+let _paused = false;
+function togglePause(){
+  _paused = !_paused;
+  const btn = document.getElementById('pauseBtn');
+  btn.textContent = _paused ? '▶ Reprendre' : '⏸ Pause';
+  btn.style.color = _paused ? 'var(--am)' : 'var(--t2)';
+  btn.style.borderColor = _paused ? 'var(--am)' : 'var(--bd)';
+  if(!_paused){ renderFrames(); renderStations(); }
+}
+
+// ── Frames state + filter ────────────────────────────────────────────────────
+let frames = [];
+let activeFlt = 'all';
+
+function setFlt(f){
+  activeFlt = f;
+  document.querySelectorAll('.flt-btn').forEach(b => b.classList.toggle('on', b.dataset.flt === f));
+  renderFrames();
+}
+
+function globalSearchHandler(){
+  const active = document.querySelector('.ptab.on')?.dataset.p;
+  if(active === 'frames') renderFrames();
+  else if(active === 'stations') renderStations();
+  else if(active === 'monitor') filterMonitor();
+}
+
+function filterMonitor(){
+  const search = (document.getElementById('globalSearch')?.value || '').toLowerCase();
+  document.querySelectorAll('#monLog .mon-line').forEach(el => {
+    el.style.display = !search || el.textContent.toLowerCase().includes(search) ? '' : 'none';
+  });
+}
+
+function exportAnalysisCsv(){
+  const p = new URLSearchParams();
+  if(_analysePeriod !== 'all'){
+    p.set('since', new Date(Date.now() - Number(_analysePeriod)*3600000).toISOString());
+  }
+  window.open('/api/export/frames.csv?' + p.toString());
+}
+
+function exportFullCsv(){
+  window.open('/api/export/frames.csv');
+}
+
+function exportHistoCsv(){
+  const date = document.getElementById('histoDateSel')?.value;
+  if(!date){ alert('Choisissez d\'abord une date'); return; }
+  window.open('/api/logs/frames?date=' + date + '&format=csv');
+}
+
+function frameMatchesFlt(f, search){
+  if(activeFlt === 'rf' && !['rf','rf_digi','tx'].includes(f.origin)) return false;
+  if(activeFlt === 'is' && f.origin !== 'is') return false;
+  if(activeFlt === 'igtx' && f.origin !== 'igtx') return false;
+  if(search){
+    const hay = ((f.source||'')+(f.comment||'')+(f.raw||'')).toLowerCase();
+    if(!hay.includes(search)) return false;
+  }
+  return true;
+}
+function buildFrameEl(f){
+  const hasPos = f.lat!=null && f.lon!=null;
+  const item = document.createElement('div');
+  item.className = `fi ${originClass(f)}`;
+  item.innerHTML = `<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${fmtT(f.timestamp)}</span></div><div><span class="fty ${tyC(f.data_type)}">${f.data_type||'?'}</span><span class="fcm">${f.comment||f.raw?.substring(0,55)||''}</span></div>${hasPos?`<div class="fco">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} — ${f.origin||'rf'}</div>`:`<div class="fco">${f.origin||'rf'}</div>`}`;
+  item.onclick = () => showDet(f);
+  if(hasPos) item.ondblclick = () => { map.setView([f.lat,f.lon],13); markers[f.source]?.openPopup(); };
+  return item;
+}
+function renderFrames(){
+  const search = (document.getElementById('globalSearch')?.value || '').toLowerCase();
+  const list = document.getElementById('fList');
+  list.innerHTML = '';
+  for(const f of frames){
+    if(!frameMatchesFlt(f, search)) continue;
+    list.appendChild(buildFrameEl(f));
+  }
+}
+function prependFrame(f){
+  if(_paused) return;
+  const search = (document.getElementById('globalSearch')?.value || '').toLowerCase();
+  if(!frameMatchesFlt(f, search)) return;
+  const list = document.getElementById('fList');
+  list.prepend(buildFrameEl(f));
+  // garder max 300 éléments dans le DOM
+  while(list.children.length > 300) list.lastChild.remove();
+}
+
 // ── Markers / state ──────────────────────────────────────────────────────────
-const markers={},stationData={},seen=new Set();
-function mkIcon(c,n){const col=n?'#00ff88':'#00aaff';return L.divIcon({className:'aprs-mk',html:`<div class="mk-dot" style="background:${col};box-shadow:0 0 8px ${col}80"></div><div class="mk-lbl">${c}</div>`,iconSize:[10,10],iconAnchor:[5,5]})}
+const markers={},stationData={},seen=new Set(),markerOrigin={};
+const ORIGIN_COLOR={rf:'#00ff88',rf_digi:'#aaff00',tx:'#ff8800',igtx:'#ffaa00',is:'#00aaff'};
+function originColor(origin){return ORIGIN_COLOR[origin]||'#00ff88';}
+
+function mkIcon(c,fresh,table,symCode,origin){
+  // fresh=true: couleur d'origine vive; false: teinté mais toujours lisible
+  const col = fresh ? originColor(origin) : originColor(origin)+'88';
+  const glow = fresh ? originColor(origin)+'99' : 'transparent';
+
+  const isPrimary = table === '/';
+  const isAlt     = table === '\\';
+  const isOverlay = table && !isPrimary && !isAlt && /^[A-Z0-9]$/.test(table);
+
+  // Wrap positionné en absolu : translate(-50%, -anchorY) centre le marqueur sur la coordonnée
+  // iconSize:[0,0] → Leaflet n'impose aucun clip sur le contenu
+
+  if(symCode && (isPrimary || isAlt || isOverlay)){
+    const idx = symCode.charCodeAt(0) - 33;
+    if(idx >= 0 && idx < 96){
+      const sx = (idx % 16) * 24;
+      const sy = Math.floor(idx / 16) * 24;
+      const img = isPrimary ? '/static/aprs-symbols-24-0.png' : '/static/aprs-symbols-24-1.png';
+      const overlayHtml = isOverlay
+        ? `<div class="mk-overlay" style="background:${originColor(origin)}">${table}</div>`
+        : '';
+      return L.divIcon({
+        className: 'aprs-mk',
+        html: `<div style="position:absolute;transform:translate(-50%,-13px);display:flex;flex-direction:column;align-items:center;pointer-events:auto">
+          <div style="position:relative">
+            <div class="mk-sprite" style="background:url('${img}') -${sx}px -${sy}px;outline:2px solid ${originColor(origin)};outline-offset:1px;filter:drop-shadow(0 0 5px ${glow})"></div>
+            ${overlayHtml}
+          </div>
+          <div class="mk-lbl">${c}</div>
+        </div>`,
+        iconSize: [0, 0],
+        iconAnchor: [0, 0],
+        popupAnchor: [12, -20],
+      });
+    }
+  }
+
+  // Fallback: dot coloré
+  return L.divIcon({
+    className: 'aprs-mk',
+    html: `<div style="position:absolute;transform:translate(-50%,-9px);display:flex;flex-direction:column;align-items:center;pointer-events:auto">
+      <div class="mk-dot" style="background:${col};box-shadow:0 0 0 2px rgba(255,255,255,.9),0 0 8px ${glow}"></div>
+      <div class="mk-lbl">${c}</div>
+    </div>`,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+    popupAnchor: [12, -16],
+  });
+}
 function tyC(t){return{position:'ty-pos',position_ts:'ty-pos',message:'ty-msg',message_ack:'ty-msg',status:'ty-sts',weather:'ty-wx','mic-e':'ty-me',query:'ty-q'}[t]||'ty-unk'}
 function fmtT(ts){try{return new Date(ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}catch{return'--:--'}}
 function fmtAgo(ts){if(!ts)return'--';const d=Math.floor((Date.now()-new Date(ts).getTime())/1000);if(d<60)return d+'s';if(d<3600)return Math.floor(d/60)+'min';return Math.floor(d/3600)+'h'}
@@ -300,48 +713,125 @@ function fmtUptime(s){if(!s)return'--';const d=Math.floor(s/86400),h=Math.floor(
 function pct(v){return v==null?'--':`${Math.round(v)}%`}
 function tempC(v){return v==null?'--':`${v.toFixed(1)}°C`}
 
+// ── Map origin filter ────────────────────────────────────────────────────────
+let mapFlt='all';
+function setMapFlt(f){
+  mapFlt=f;
+  document.querySelectorAll('.map-flt-btn').forEach(b=>b.classList.toggle('on',b.dataset.mf===f));
+  Object.entries(markers).forEach(([c,m])=>{
+    const org=markerOrigin[c]||'rf';
+    const show=f==='all'||(f==='rf'&&['rf','rf_digi','tx'].includes(org))||(f==='is'&&org==='is')||(f==='igtx'&&org==='igtx');
+    if(show){if(!map.hasLayer(m))m.addTo(map);}else{if(map.hasLayer(m))map.removeLayer(m);}
+  });
+}
+
 function updMk(f){
   if(f.lat==null||f.lon==null)return;
   const c=f.source||f.callsign;if(!c)return;
-  if(markers[c]){markers[c].setLatLng([f.lat,f.lon]);markers[c].setIcon(mkIcon(c,true))}
-  else{const m=L.marker([f.lat,f.lon],{icon:mkIcon(c,true)}).addTo(map);m.bindPopup(`<div class="pp-c">${c}</div><div class="pp-i">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}<br>${f.comment||''}<br>${f.origin||''}</div>`,{maxWidth:240});markers[c]=m;}
-  setTimeout(()=>{if(markers[c])markers[c].setIcon(mkIcon(c,false))},5000);
-  document.getElementById('mC').textContent=Object.keys(markers).length;
+  const sym=f.symbol||'';
+  const table=sym.length>=1?sym[0]:null;
+  const code=sym.length>=2?sym[1]:null;
+  const org=f.origin||'rf';
+  markerOrigin[c]=org;
+  if(markers[c]){markers[c].setLatLng([f.lat,f.lon]);markers[c].setIcon(mkIcon(c,true,table,code,org));}
+  else{
+    const m=L.marker([f.lat,f.lon],{icon:mkIcon(c,true,table,code,org)});
+    m.bindPopup(`<div class="pp-c">${c}</div><div class="pp-i">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}<br>${f.comment||''}<br><span style="color:${originColor(org)}">${org}</span></div>`,{maxWidth:240});
+    markers[c]=m;
+    // respect current map filter
+    const show=mapFlt==='all'||(mapFlt==='rf'&&['rf','rf_digi','tx'].includes(org))||(mapFlt==='is'&&org==='is')||(mapFlt==='igtx'&&org==='igtx');
+    if(show)m.addTo(map);
+  }
+  setTimeout(()=>{if(markers[c])markers[c].setIcon(mkIcon(c,false,table,code,org));},5000);
+  document.getElementById('mC').textContent=Object.values(markers).filter(m=>map.hasLayer(m)).length;
 }
 
 function originClass(f){
   if(f.lat!=null&&f.lon!=null)return'hp';
   if(f.origin==='igtx')return'ip';
-  if(f.origin==='rf_digi')return'dp';
+  if(f.origin==='rf_digi')return'digi';
   return'np';
 }
 function addF(f){
-  const list=document.getElementById('fList');
-  const item=document.createElement('div');
-  item.className=`fi ${originClass(f)}`;
-  item.innerHTML=`<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${fmtT(f.timestamp)}</span></div><div><span class="fty ${tyC(f.data_type)}">${f.data_type||'?'}</span><span class="fcm">${f.comment||f.raw?.substring(0,55)||''}</span></div>${hasPos?`<div class="fco">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} — ${f.origin||'rf'}</div>`:`<div class="fco">${f.origin||'rf'}</div>`}`;
-  item.onclick=()=>showDet(f);
-  if(hasPos)item.ondblclick=()=>{map.setView([f.lat,f.lon],13);markers[f.source]?.openPopup()};
-  list.prepend(item);
-  while(list.children.length>200)list.removeChild(list.lastChild);
+  frames.unshift(f);
+  if(frames.length>500)frames.length=500;
+  prependFrame(f);
 }
 
 function showDet(f){
   const panel=document.getElementById('fDet');
   panel.className='dp vis';
-  const rows=[['Source',f.source],['Destination',f.destination],['Path',f.path||'-'],['Type',f.data_type],['Origin',f.origin||'-'],['Lat',f.lat!=null?f.lat.toFixed(5):'-'],['Lon',f.lon!=null?f.lon.toFixed(5):'-'],['Symbol',f.symbol||'-'],['Speed',f.speed!=null?f.speed+' kn':'-'],['Course',f.course!=null?f.course+'°':'-'],['Altitude',f.altitude!=null?f.altitude+' ft':'-'],['Comment',f.comment||'-']].map(([l,v])=>`<div class="dr"><span class="dlb">${l}</span><span class="dval">${v??'-'}</span></div>`).join('');
-  panel.innerHTML=`<div class="dt">${f.source||'?'}</div>${rows}<div class="raw">${f.raw||''}</div>`;
+  const sym=f.symbol||'';
+  const table=sym.length>=1?sym[0]:null;
+  const code=sym.length>=2?sym[1]:null;
+  let symHtml='';
+  if(table&&code){
+    const idx=code.charCodeAt(0)-33,col=idx%16,row=Math.floor(idx/16);
+    const img=table==='/'?'/static/aprs-symbols-24-0.png':'/static/aprs-symbols-24-1.png';
+    symHtml=`<div style="width:24px;height:24px;background:url('${img}') -${col*24}px -${row*24}px;image-rendering:pixelated;flex-shrink:0"></div>`;
+  }
+  const distRow=f.distance_km!=null?`${f.distance_km} km / ${f.bearing_deg}°`:'-';
+  const rows=[['Source',f.source],['Destination',f.destination],['Path',f.path||'-'],['Type',f.data_type],['Origin',f.origin||'-'],['Distance/Az',distRow],['Lat',f.lat!=null?f.lat.toFixed(5):'-'],['Lon',f.lon!=null?f.lon.toFixed(5):'-'],['Symbole',f.symbol||'-'],['Vitesse',f.speed!=null?f.speed+' kn':'-'],['Cap',f.course!=null?f.course+'°':'-'],['Altitude',f.altitude!=null?f.altitude+' ft':'-'],['Commentaire',f.comment||'-']].map(([l,v])=>`<div class="dr"><span class="dlb">${l}</span><span class="dval">${v??'-'}</span></div>`).join('');
+  panel.innerHTML=`<div class="dt" style="display:flex;align-items:center;gap:8px">${symHtml}<span>${f.source||'?'}</span></div>${rows}<div class="raw">${f.raw||''}</div>`;
+  // Ouvrir popup sur la carte si la station a une position
+  if(f.lat!=null&&f.lon!=null&&f.source&&markers[f.source]){
+    map.setView([f.lat,f.lon],13);
+    markers[f.source].openPopup();
+  }
+}
+
+// ── Légende icônes APRS ──────────────────────────────────────────────────────
+const APRS_ICONS=[
+  ['/','!','Police'],['/','"','NWS'],['/','-','Maison'],['/','0','Zéro'],
+  ['/','7','PBBS'],['/','8','Bateau'],['/','9','Voiture'],['/','<','Moto'],
+  ['/','>','Voiture'],['/','?','Serveur'],['/','@','Ouragan'],['/','A','Aid'],
+  ['/','B','BBS'],['/','C','Camp'],['/','D','DEA'],['/','E','Eyeball'],
+  ['/','F','Farm'],['/','G','Grid'],['/','H','Hotel'],['/','I','TCPip'],
+  ['/','J','WJ'],['/','K','École'],['/','L','Feuille'],['/','M','MacOS'],
+  ['/','N','NTS'],['/','O','Ballon'],['/','P','Police'],['/','Q','Quake'],
+  ['/','R','RV'],['/','S','Satel'],['/','T','Phone'],['/','U','Bus'],
+  ['/','V','ATV'],['/','W','NWS'],['/','X','Hélico'],['/','Y','Yacht'],
+  ['/','Z','WinAP'],['/','[','Piéton'],['/','\\','Triangle'],['/',']','ARES'],
+  ['/','^','Avion'],['/','_','Météo'],['/','`','Disque'],['/','{','Foyer'],
+  ['\\','A','Box'],['\\','D','Digi'],['\\','I','Igate'],['\\','O','EOC'],
+  ['\\','R','Relay'],['\\','S','Power'],['\\','Y','Yacht 2'],['\\','^','Avion 2'],
+];
+let _iconLegendBuilt=false;
+function toggleIconLegend(){
+  const el=document.getElementById('iconLegend');
+  if(el.style.display==='none'){
+    el.style.display='block';
+    if(!_iconLegendBuilt){
+      const grid=document.getElementById('iconLegendGrid');
+      APRS_ICONS.forEach(([table,code,label])=>{
+        const idx=code.charCodeAt(0)-33,col=idx%16,row=Math.floor(idx/16);
+        const img=table==='/'?'/static/aprs-symbols-24-0.png':'/static/aprs-symbols-24-1.png';
+        const d=document.createElement('div');
+        d.title=label;
+        d.style.cssText='display:flex;flex-direction:column;align-items:center;gap:2px;cursor:default;padding:2px';
+        d.innerHTML=`<div style="width:24px;height:24px;background:url('${img}') -${col*24}px -${row*24}px;image-rendering:pixelated"></div><div style="font-size:8px;color:var(--t3);text-align:center;line-height:1.1;overflow:hidden;max-width:48px;white-space:nowrap;text-overflow:ellipsis">${label}</div>`;
+        grid.appendChild(d);
+      });
+      _iconLegendBuilt=true;
+    }
+  } else {
+    el.style.display='none';
+  }
 }
 
 function updSt(c,f){if(!seen.has(c)){seen.add(c);stationData[c]={count:0}}stationData[c].count=(stationData[c].count||0)+1;stationData[c].last=f;}
 function renderStations(){
   const grid=document.getElementById('sGrid');grid.innerHTML='';
-  Object.entries(stationData).sort((a,b)=>(b[1].count||0)-(a[1].count||0)).forEach(([c,d])=>{
-    const cell=document.createElement('div');cell.className='sc';
-    cell.innerHTML=`${c}<span class="cnt">${d.count} frames${(d.last?.origin)?` — ${d.last.origin}`:''}</span>`;
-    cell.onclick=()=>{if(markers[c]){map.setView(markers[c].getLatLng(),13);markers[c].openPopup()}};
-    grid.appendChild(cell);
-  });
+  const search=(document.getElementById('globalSearch')?.value||'').toLowerCase();
+  Object.entries(stationData)
+    .filter(([c])=>!search||c.toLowerCase().includes(search))
+    .sort((a,b)=>(b[1].count||0)-(a[1].count||0))
+    .forEach(([c,d])=>{
+      const cell=document.createElement('div');cell.className='sc';
+      cell.innerHTML=`${c}<span class="cnt">${d.count} frames${(d.last?.origin)?` — ${d.last.origin}`:''}</span>`;
+      cell.onclick=()=>{if(markers[c]){map.setView(markers[c].getLatLng(),13);markers[c].openPopup()}};
+      grid.appendChild(cell);
+    });
 }
 
 function updateStats(stats){
@@ -429,12 +919,32 @@ function renderMeteo(frames){
 }
 
 // ── Système (Pi + Audio) ─────────────────────────────────────────────────────
-function renderSysteme(pi, audio){
+function renderAudioCfg(audio){
+  const el=document.getElementById('audioCfgPanel');
+  if(!el)return;
+  let html='';
+  if(audio.aioc){
+    const a=audio.aioc;
+    html+=`<div class="kv"><div class="k">AIOC</div><div class="v audio-ok">✓ Détecté (${a.hw||'?'})</div></div>`;
+    if(a.capture_line)html+=`<div class="kv"><div class="k">Capture</div><div class="v" style="font-size:9px">${a.capture_line}</div></div>`;
+  } else {
+    html+=`<div class="kv"><div class="k">AIOC</div><div class="v audio-err">✗ Non détecté</div></div>`;
+  }
+  if(audio.usb_device)html+=`<div class="kv"><div class="k">USB</div><div class="v" style="font-size:9px">${audio.usb_device}</div></div>`;
+  if(audio.capture?.length){
+    html+='<div style="margin-top:4px;font-size:9px;color:var(--t3)">Périphériques capture :</div>';
+    for(const l of audio.capture)html+=`<div style="font-size:9px;color:var(--t2);padding:1px 0">${l}</div>`;
+  }
+  el.innerHTML=html||'<span style="color:var(--t3)">Aucune info audio</span>';
+}
+
+function renderSysteme(pi){
   let html='<div class="sys-section"><div class="sys-title">Raspberry Pi</div>';
   html+=`<div class="kv"><div class="k">Modèle</div><div class="v">${pi.model||'--'}</div></div>`;
   html+=`<div class="kv"><div class="k">OS</div><div class="v">${pi.os||'--'}</div></div>`;
   html+=`<div class="kv"><div class="k">Noyau</div><div class="v">${pi.kernel||'--'}</div></div>`;
   html+=`<div class="kv"><div class="k">Archi</div><div class="v">${pi.arch||'--'}</div></div>`;
+  if(pi.direwolf_version)html+=`<div class="kv"><div class="k">Direwolf</div><div class="v" style="color:var(--g)">${pi.direwolf_version}</div></div>`;
   if(pi.arm_freq_mhz)html+=`<div class="kv"><div class="k">Freq ARM</div><div class="v">${pi.arm_freq_mhz} MHz</div></div>`;
   if(pi.gpu_mem_mb)html+=`<div class="kv"><div class="k">GPU Mem</div><div class="v">${pi.gpu_mem_mb} MB</div></div>`;
   if(pi.throttled!=null){
@@ -462,28 +972,32 @@ function renderSysteme(pi, audio){
     html+=`<div class="bar-wrap"><div class="bar-fill" style="width:${usedPct}%;background:${usedPct>85?'var(--rd)':usedPct>65?'var(--am)':'var(--g)'}"></div></div>`;
     html+='</div>';
   }
-  // Audio
-  html+='<div class="sys-section"><div class="sys-title">Audio</div>';
-  if(audio.aioc){
-    const a=audio.aioc;
-    html+=`<div class="kv"><div class="k">AIOC</div><div class="v audio-ok">✓ Détecté (${a.hw||'?'})</div></div>`;
-    if(a.capture_line)html+=`<div class="kv"><div class="k">Capture</div><div class="v" style="font-size:9px">${a.capture_line}</div></div>`;
-  } else {
-    html+=`<div class="kv"><div class="k">AIOC</div><div class="v audio-err">✗ Non détecté</div></div>`;
-  }
-  if(audio.usb_device)html+=`<div class="kv"><div class="k">USB</div><div class="v" style="font-size:9px">${audio.usb_device}</div></div>`;
-  if(audio.playback?.length){
-    html+='<div style="margin-top:6px"><div class="audio-lbl">Périphériques playback</div>';
-    for(const l of audio.playback)html+=`<div style="font-size:9px;color:var(--t2);padding:2px 0">${l}</div>`;
-    html+='</div>';
-  }
-  if(audio.capture?.length){
-    html+='<div style="margin-top:4px"><div class="audio-lbl">Périphériques capture</div>';
-    for(const l of audio.capture)html+=`<div style="font-size:9px;color:var(--t2);padding:2px 0">${l}</div>`;
-    html+='</div>';
-  }
-  html+='</div>';
   document.getElementById('systemePanel').innerHTML=html;
+  // Clients connectés (async)
+  fetch('/api/system/clients').then(r=>r.json()).then(d=>{
+    const el=document.getElementById('sysClients');
+    if(el)el.textContent=d.count+' connecté(s) — '+d.ips.join(', ');
+  }).catch(()=>{});
+  // aprs.fi (async)
+  loadAprsFi();
+}
+
+// ── aprs.fi status ────────────────────────────────────────────────────────────
+function loadAprsFi(){
+  const el=document.getElementById('aprsFiPanel');
+  if(!el)return;
+  el.innerHTML='<span style="color:var(--t3)">Interrogation aprs.fi…</span>';
+  fetch('/api/aprsfi').then(r=>r.json()).then(d=>{
+    if(d.error){el.innerHTML=`<span style="color:var(--rd)">✗ ${d.error}</span>`;return;}
+    const ok=d.running;
+    const col=ok?'var(--g)':'var(--rd)';
+    let html=`<div class="kv"><div class="k">Callsign</div><div class="v" style="color:${col};font-weight:700">${d.callsign||'--'}</div></div>`;
+    html+=`<div class="kv"><div class="k">Statut</div><div class="v" style="color:${col}">${ok?'✓ Actif':'✗ Silencieux'}</div></div>`;
+    html+=`<div class="kv"><div class="k">Dernier beacon</div><div class="v">${d.age_str||'--'} ago</div></div>`;
+    html+=`<div class="kv"><div class="k">Chemin</div><div class="v">${d.via||'--'}</div></div>`;
+    if(d.comment)html+=`<div class="kv"><div class="k">Commentaire</div><div class="v">${d.comment}</div></div>`;
+    el.innerHTML=html;
+  }).catch(e=>{if(el)el.innerHTML=`<span style="color:var(--rd)">Erreur: ${e}</span>`;});
 }
 
 // ── Monitor SSE ───────────────────────────────────────────────────────────────
@@ -496,10 +1010,10 @@ function monitorStart(){
   monitorES.onmessage=e=>{
     try{
       const line=JSON.parse(e.data);
+      if(_paused)return;
       const div=document.createElement('div');
       div.className='mon-line';
-      // Convertir codes ANSI basiques en spans colorés
-      div.innerHTML=ansiToHtml(line);
+      div.innerHTML=monLineHtml(line);
       log.appendChild(div);
       if(log.children.length>500)log.removeChild(log.firstChild);
       log.scrollTop=log.scrollHeight;
@@ -511,40 +1025,22 @@ function monitorStop(){
   if(monitorES){monitorES.close();monitorES=null;}
   monitorActive=false;
 }
-// ANSI → HTML : gère 30-37, 90-97 (codes simples) et 38;2;R;G;B (RGB Direwolf)
-const _ansiBasic={'30':'#556677','31':'#ff4466','32':'#00ff88','33':'#ffaa00','34':'#00aaff','35':'#c864ff','36':'#00ccff','37':'#e8edf3','90':'#778899','91':'#ff6688','92':'#33ff99','93':'#ffcc44','94':'#44bbff','95':'#dd88ff','96':'#33ddff','97':'#ffffff'};
-function ansiToHtml(raw){
-  // Split on ANSI escape sequences, keeping them as tokens
-  const parts=raw.split(/(\x1b\[[0-9;]*m)/);
-  let html='';let openSpan=false;
-  for(let i=0;i<parts.length;i++){
-    if(i%2===0){
-      // text segment — HTML-escape it
-      html+=parts[i].replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }else{
-      // ANSI code
-      const code=parts[i].slice(2,-1); // strip \x1b[ and m
-      if(code===''||code==='0'){
-        if(openSpan){html+='</span>';openSpan=false;}
-      }else{
-        const p=code.split(';');
-        let color=null;
-        if(p[0]==='38'&&p[1]==='2'&&p.length>=5){
-          // RGB: 38;2;R;G;B
-          color=`rgb(${p[2]},${p[3]},${p[4]})`;
-        }else if(_ansiBasic[p[0]]){
-          color=_ansiBasic[p[0]];
-        }
-        if(color){
-          if(openSpan)html+='</span>';
-          html+=`<span style="color:${color}">`;
-          openSpan=true;
-        }
-      }
-    }
-  }
-  if(openSpan)html+='</span>';
-  return html;
+// Strip ANSI codes and apply our own color palette based on Direwolf line type
+function monLineClass(raw){
+  // strip ANSI first to inspect content
+  const t=raw.replace(/\x1b\[[0-9;]*m/g,'');
+  if(/^\[0L\]/.test(t))return'mon-tx';    // transmitted — amber
+  if(/^\[0[H]?\]/.test(t))return'mon-rf'; // RF received — green
+  if(/^\[ig>tx\]/.test(t))return'mon-ig'; // IS→RF relay — blue
+  if(/^\[ig\]/.test(t))return'mon-is';    // IS received — cyan
+  if(/error|Error|failed|Failed|WARNING/i.test(t))return'mon-err'; // red
+  return'mon-txt'; // default text
+}
+function stripAnsi(s){return s.replace(/\x1b\[[0-9;]*m/g,'');}
+function monLineHtml(raw){
+  const cls=monLineClass(raw);
+  const txt=stripAnsi(raw).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return`<span class="${cls}">${txt}</span>`;
 }
 
 // ── Terminal (xterm.js) ───────────────────────────────────────────────────────
@@ -596,22 +1092,401 @@ function termClear(){if(term)term.clear();}
 
 // ── Fetch helpers ────────────────────────────────────────────────────────────
 function loadFrames(){
-  fetch('/api/frames?n=80').then(r=>r.json()).then(frames=>{
-    document.getElementById('fList').innerHTML='';
-    frames.reverse().forEach(f=>{addF(f);if(f.source)updSt(f.source,f);});
+  fetch('/api/frames?n=80').then(r=>r.json()).then(data=>{
+    frames=[];
+    data.reverse().forEach(f=>{
+      frames.unshift(f);
+      updMk(f);
+      if(f.source)updSt(f.source,f);
+    });
+    if(frames.length>500)frames.length=500;
+    renderFrames();
     renderStations();
   });
 }
 function loadPositions(){
-  fetch('/api/positions').then(r=>r.json()).then(ps=>{ps.forEach(p=>updMk({source:p.callsign,lat:p.lat,lon:p.lon,comment:p.comment,altitude:p.altitude,origin:p.origin}));});
+  fetch('/api/positions').then(r=>r.json()).then(ps=>{ps.forEach(p=>updMk({source:p.callsign,lat:p.lat,lon:p.lon,symbol:p.symbol,comment:p.comment,altitude:p.altitude,origin:p.origin}));});
 }
 function pollStats(){fetch('/api/stats').then(r=>r.json()).then(updateStats).catch(()=>{});}
-function loadConfigRaw(){fetch('/api/system/config/raw').then(r=>r.text()).then(t=>{document.getElementById('cfgRaw').textContent=t||'# vide';}).catch(()=>{document.getElementById('cfgRaw').textContent='Erreur chargement';});}
-function loadWifi(){fetch('/api/system/network').then(r=>r.json()).then(renderWifi).catch(()=>{document.getElementById('wifiPanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur réseau</div>';});}
-function loadClock(){fetch('/api/system/clock').then(r=>r.json()).then(renderClock).catch(()=>{document.getElementById('clockPanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur horloge</div>';});}
-function loadMeteo(){fetch('/api/weather').then(r=>r.json()).then(renderMeteo).catch(()=>{});}
+// ── Config (form) ─────────────────────────────────────────────────────────────
+const CFG_KEYS=['CALLSIGN','PASSCODE','LAT','LON','COMMENT','IGSERVER','IGFILTER_KM','TXDELAY','ADEVICE','PTT','REBOOT_DAY','REBOOT_HOUR'];
+function loadConfigRaw(){
+  fetch('/api/system/config').then(r=>r.json()).then(d=>{
+    const m={CALLSIGN:d.callsign,LAT:d.lat,LON:d.lon,COMMENT:d.comment};
+    fetch('/api/system/config/raw').then(r=>r.text()).then(raw=>{
+      // parse raw env file for all keys
+      raw.split('\n').forEach(line=>{
+        const eq=line.indexOf('=');
+        if(eq<0||line.trim().startsWith('#'))return;
+        const k=line.slice(0,eq).trim();
+        const v=line.slice(eq+1).trim().replace(/^["']|["']$/g,'');
+        m[k]=v;
+      });
+      CFG_KEYS.forEach(k=>{const el=document.getElementById('cfg_'+k);if(el)el.value=m[k]??'';});
+    });
+  }).catch(()=>{});
+}
+function showMsg(id,text,ok){
+  const el=document.getElementById(id);
+  el.style.display='block';
+  el.style.background=ok?'rgba(0,255,136,.1)':'rgba(255,68,102,.1)';
+  el.style.border='1px solid '+(ok?'var(--g)':'var(--rd)');
+  el.style.color=ok?'var(--g)':'var(--rd)';
+  el.textContent=text;
+  setTimeout(()=>{el.style.display='none';},4000);
+}
+function showActionMsg(text,ok){showMsg('actionMsg',text,ok);}
+function saveConfig(){
+  const data={};
+  CFG_KEYS.forEach(k=>{const el=document.getElementById('cfg_'+k);if(el&&el.value!=='')data[k]=el.value;});
+  fetch('/api/config/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})
+    .then(r=>r.json()).then(d=>{
+      showMsg('cfgMsg',d.ok?'Sauvegardé — Direwolf redémarre…':('Erreur: '+d.error),d.ok);
+      if(d.ok)setTimeout(()=>fetch('/api/direwolf/restart',{method:'POST'}),500);
+    }).catch(e=>showMsg('cfgMsg','Erreur: '+e,false));
+}
+
+// ── WiFi ──────────────────────────────────────────────────────────────────────
+function loadWifi(){
+  fetch('/api/system/network').then(r=>r.json()).then(d=>{
+    document.getElementById('wifiSsid').value=d.wifi_ssid||d.ssid||'';
+    if(d.wifi_ssid||d.ssid)document.getElementById('wifiList').textContent='Connecté: '+(d.wifi_ssid||d.ssid);
+  }).catch(()=>{});
+}
+function wifiScan(){
+  const btn=document.getElementById('wifiScanBtn');
+  btn.disabled=true;btn.textContent='⏳ Scan…';
+  fetch('/api/wifi/scan',{method:'POST'}).then(r=>r.json()).then(d=>{
+    btn.disabled=false;btn.textContent='🔍 Scanner';
+    const cur=d.current||'';
+    if(!d.networks||!d.networks.length){document.getElementById('wifiList').textContent='Aucun réseau trouvé';return;}
+    document.getElementById('wifiList').innerHTML=d.networks.map(s=>
+      `<div style="padding:3px 0;cursor:pointer;color:${s===cur?'var(--g)':'var(--t1)'}"
+         onclick="document.getElementById('wifiSsid').value='${s.replace(/'/g,"\\'")}'"
+       >${s===cur?'✔ ':''}<b>${s}</b></div>`
+    ).join('');
+  }).catch(e=>{btn.disabled=false;btn.textContent='🔍 Scanner';showMsg('wifiMsg','Erreur: '+e,false);});
+}
+function wifiConnect(){
+  const ssid=document.getElementById('wifiSsid').value.trim();
+  const pwd=document.getElementById('wifiPwd').value;
+  if(!ssid){showMsg('wifiMsg','SSID requis',false);return;}
+  showMsg('wifiMsg','Connexion en cours (jusqu\'à 15s)…',true);
+  fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid,password:pwd})})
+    .then(r=>r.json()).then(d=>showMsg('wifiMsg',d.message||'',d.ok)).catch(e=>showMsg('wifiMsg','Erreur: '+e,false));
+}
+function wifiDisconnect(){
+  fetch('/api/wifi/disconnect',{method:'POST'}).then(r=>r.json()).then(d=>showMsg('wifiMsg',d.message||'',d.ok)).catch(e=>showMsg('wifiMsg','Erreur: '+e,false));
+}
+
+// ── Horloge ───────────────────────────────────────────────────────────────────
+function loadClock(){
+  fetch('/api/system/clock').then(r=>r.json()).then(d=>{
+    const el=document.getElementById('ntpStatus');
+    if(!el)return;
+    el.textContent=[d.local_time,d.ntp_synchronized!=null?'NTP: '+(d.ntp_synchronized?'✔ synchronisé':'✘ non synchronisé'):'',d.timezone||''].filter(Boolean).join('\n');
+  }).catch(()=>{});
+}
+function ntpSync(){
+  fetch('/api/clock/sync',{method:'POST'}).then(r=>r.json()).then(d=>{
+    showMsg('clockMsg',d.message||'',d.ok);
+    if(d.ok)setTimeout(loadClock,3000);
+  }).catch(e=>showMsg('clockMsg','Erreur: '+e,false));
+}
+function clockSet(){
+  const val=document.getElementById('clockInput').value.trim();
+  fetch('/api/clock/set',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({datetime:val})})
+    .then(r=>r.json()).then(d=>{showMsg('clockMsg',d.message||'',d.ok);if(d.ok)setTimeout(loadClock,1000);})
+    .catch(e=>showMsg('clockMsg','Erreur: '+e,false));
+}
+
+// ── Météo / capteur ───────────────────────────────────────────────────────────
+let sensorInterval=null;
+function loadSensor(){
+  fetch('/api/sensor').then(r=>r.json()).then(d=>{
+    const el=document.getElementById('sensorData');
+    if(!el)return;
+    if(!d.ok){el.innerHTML=`<span style="color:var(--rd)">${d.error||'Capteur indisponible'}</span>`;return;}
+    const iaq=d.iaq!=null&&d.iaq>=0?`<div class="sx-val"><div class="sx-num" style="color:${d.iaq<50?'var(--g)':d.iaq<100?'#aaff00':d.iaq<150?'var(--am)':'var(--rd)'}">${d.iaq.toFixed(0)}</div><div class="sx-unit">IAQ${d.iaq_accuracy!=null?' acc='+d.iaq_accuracy:''}</div></div>`:'';
+    const co2=d.co2_eq>0?`<div class="sx-val"><div class="sx-num" style="font-size:15px">${d.co2_eq.toFixed(0)}</div><div class="sx-unit">CO₂ ppm</div></div>`:'';
+    el.innerHTML=`<div class="sx-grid">
+      <div class="sx-val"><div class="sx-num">${d.temperature}</div><div class="sx-unit">°C</div></div>
+      <div class="sx-val"><div class="sx-num">${d.humidity}</div><div class="sx-unit">% HR</div></div>
+      <div class="sx-val"><div class="sx-num" style="font-size:15px">${d.pressure}</div><div class="sx-unit">hPa</div></div>
+      ${iaq}${co2}
+    </div><div style="font-size:9px;color:var(--t3);margin-top:6px;text-align:right">${d.chip||''}</div>`;
+  }).catch(()=>{});
+}
+function loadMeteo(){
+  loadSensor();
+  if(sensorInterval)clearInterval(sensorInterval);
+  sensorInterval=setInterval(loadSensor,30000);
+  fetch('/api/weather').then(r=>r.json()).then(renderMeteo).catch(()=>{});
+}
+function sendWeather(){
+  const btn=document.getElementById('wxSendBtn');
+  btn.disabled=true;
+  fetch('/api/weather/send',{method:'POST'}).then(r=>r.json()).then(d=>{
+    btn.disabled=false;
+    showMsg('wxMsg',d.ok?('Envoyé: '+d.packet):('Erreur: '+(d.error||'')),d.ok);
+  }).catch(e=>{btn.disabled=false;showMsg('wxMsg','Erreur: '+e,false);});
+}
+
+// ── Historique CSV logs ───────────────────────────────────────────────────────
+let _histoFrames = [];
+function loadLogDates(){
+  fetch('/api/logs/dates').then(r=>r.json()).then(dates=>{
+    const sel=document.getElementById('histoDateSel');
+    sel.innerHTML='<option value="">Choisir une date…</option>';
+    dates.forEach(d=>{
+      const opt=document.createElement('option');
+      opt.value=d; opt.textContent=d;
+      sel.appendChild(opt);
+    });
+    // auto-sélectionner aujourd'hui si disponible
+    const today=new Date().toISOString().slice(0,10);
+    if(dates.includes(today))sel.value=today;
+    if(sel.value)loadLogFrames();
+  }).catch(()=>{});
+}
+function loadLogFrames(){
+  const date=document.getElementById('histoDateSel').value;
+  if(!date)return;
+  document.getElementById('histoCount').textContent='Chargement…';
+  document.getElementById('histoList').innerHTML='';
+  fetch(`/api/logs/frames?date=${date}`).then(r=>r.json()).then(frames=>{
+    _histoFrames=frames;
+    document.getElementById('histoCount').textContent=`${frames.length} trame(s)`;
+    renderHistoFrames();
+  }).catch(e=>{document.getElementById('histoCount').textContent='Erreur: '+e;});
+}
+function renderHistoFrames(){
+  const search=(document.getElementById('histoSearch')?.value||'').toLowerCase();
+  const list=document.getElementById('histoList');
+  list.innerHTML='';
+  const filtered=_histoFrames.filter(f=>{
+    if(!search)return true;
+    return((f.source||'')+(f.comment||'')+(f.heard_via||'')).toLowerCase().includes(search);
+  });
+  filtered.forEach(f=>{
+    const hasPos=f.lat!=null&&f.lon!=null;
+    const distStr=f.distance_km!=null?` · ${f.distance_km}km / ${f.bearing_deg}°`:'';
+    const originCls=f.origin==='rf_digi'?'digi':hasPos?'hp':'np';
+    const div=document.createElement('div');
+    div.className=`fi ${originCls}`;
+    const ts=f.timestamp?f.timestamp.replace('T',' ').replace('Z',''):'--';
+    div.innerHTML=`<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${ts}</span></div>`+
+      `<div><span class="fty ty-pos">${f.symbol||'?'}</span><span class="fcm">${f.comment||''}</span></div>`+
+      `<div class="fco">${f.origin||'rf'}${distStr}${f.heard_via&&f.heard_via!==f.source?' · via '+f.heard_via:''}</div>`;
+    div.onclick=()=>{
+      if(hasPos&&markers[f.source]){map.setView([f.lat,f.lon],13);markers[f.source].openPopup();}
+    };
+    list.appendChild(div);
+  });
+  if(!filtered.length)list.innerHTML='<div style="padding:16px;color:var(--t3);text-align:center">Aucune trame</div>';
+}
+
+// ── Backup ───────────────────────────────────────────────────────────────────
+function backupCreate(){
+  showMsg('backupMsg','Création en cours…',true);
+  fetch('/api/backup/create',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(d.ok){showMsg('backupMsg','Sauvegarde créée: '+d.file,true);backupRefresh();}
+    else showMsg('backupMsg','Erreur: '+(d.error||''),false);
+  }).catch(e=>showMsg('backupMsg','Erreur: '+e,false));
+}
+function backupRefresh(){
+  fetch('/api/backup/list').then(r=>r.json()).then(list=>{
+    const el=document.getElementById('backupList');
+    if(!list.length){el.innerHTML='<span style="color:var(--t3)">Aucune sauvegarde</span>';return;}
+    el.innerHTML=list.map(f=>{
+      const kb=Math.round(f.size/1024);
+      const dt=new Date(f.mtime*1000).toLocaleString('fr-FR');
+      return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.name}">${f.name}</span>
+        <span style="color:var(--t3);white-space:nowrap">${kb}ko ${dt}</span>
+        <a href="/api/backup/download/${f.name}" style="color:var(--bl);text-decoration:none" title="Télécharger">⬇</a>
+        <button onclick="backupRestore('${f.name}')" style="background:none;border:none;color:var(--am);cursor:pointer;font-size:12px" title="Restaurer">↩</button>
+        <button onclick="backupDelete('${f.name}')" style="background:none;border:none;color:var(--rd);cursor:pointer;font-size:12px" title="Supprimer">🗑</button>
+      </div>`;
+    }).join('');
+  }).catch(e=>showMsg('backupMsg','Erreur liste: '+e,false));
+}
+function backupRestore(name){
+  if(!confirm('Restaurer '+name+' ? (remplace config.env et direwolf.conf)'))return;
+  fetch('/api/backup/restore/'+name,{method:'POST'}).then(r=>r.json()).then(d=>{
+    showMsg('backupMsg',d.ok?'Restauré: '+d.restored.join(', '):'Erreur: '+(d.error||''),d.ok);
+  }).catch(e=>showMsg('backupMsg','Erreur: '+e,false));
+}
+function backupDelete(name){
+  if(!confirm('Supprimer '+name+' ?'))return;
+  fetch('/api/backup/delete/'+name,{method:'POST'}).then(r=>r.json()).then(d=>{
+    showMsg('backupMsg',d.ok?'Supprimé':'Erreur: '+(d.error||''),d.ok);
+    if(d.ok)backupRefresh();
+  }).catch(e=>showMsg('backupMsg','Erreur: '+e,false));
+}
+
+// ── Analyse ───────────────────────────────────────────────────────────────────
+let _analyseData = null;
+let _analysePeriod = '1';
+let _anSortKey = 'last_seen', _anSortDir = -1;
+
+function setAnalysePeriod(btn){
+  document.querySelectorAll('.an-period').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  _analysePeriod = btn.dataset.h;
+  loadAnalyse();
+}
+
+function loadAnalyse(){
+  const url = '/api/analyse' + (_analysePeriod !== 'all' ? '?hours=' + _analysePeriod : '');
+  fetch(url).then(r => r.json()).then(d => {
+    _analyseData = d;
+    document.getElementById('anTotal').textContent = d.total_frames;
+    document.getElementById('anStations').textContent = d.stations.length;
+    const o = d.origins || {};
+    document.getElementById('anRf').textContent = (o.rf || 0) + (o.tx || 0);
+    document.getElementById('anDigi').textContent = o.rf_digi || 0;
+    document.getElementById('anIs').textContent = o.is || 0;
+    document.getElementById('anIgtx').textContent = o.igtx || 0;
+    renderAnalyseTable();
+  }).catch(() => {});
+}
+
+function sortAnalyse(key){
+  if(_anSortKey === key){ _anSortDir = -_anSortDir; }
+  else { _anSortKey = key; _anSortDir = key === 'callsign' ? 1 : -1; }
+  // update header arrows
+  document.querySelectorAll('[id^="anSh-"]').forEach(el => {
+    const k = el.id.replace('anSh-', '');
+    const base = el.textContent.replace(/[▲▾]/g, '').trim();
+    el.textContent = base + (k === _anSortKey ? (_anSortDir === 1 ? ' ▲' : ' ▾') : '');
+  });
+  renderAnalyseTable();
+}
+
+function renderAnalyseTable(){
+  if(!_analyseData) return;
+  const search = (document.getElementById('anSearch')?.value || '').toLowerCase();
+  let rows = [..._analyseData.stations];
+  if(search) rows = rows.filter(r =>
+    (r.callsign || '').toLowerCase().includes(search) ||
+    (r.last_comment || '').toLowerCase().includes(search)
+  );
+  rows.sort((a, b) => {
+    let av = a[_anSortKey] ?? '', bv = b[_anSortKey] ?? '';
+    if(typeof av === 'string' && typeof bv === 'string')
+      return av < bv ? -_anSortDir : av > bv ? _anSortDir : 0;
+    return ((av ?? -Infinity) - (bv ?? -Infinity)) * _anSortDir;
+  });
+  const tbody = document.getElementById('anTbody');
+  document.getElementById('anStCount').textContent = '(' + rows.length + ')';
+  if(!rows.length){
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:16px;color:var(--t3)">Aucune station</td></tr>';
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  for(const r of rows){
+    const via = r.has_direct && r.has_digi
+      ? '<span style="color:#00aaff">DIR+DIGI</span>'
+      : r.has_direct
+        ? '<span style="color:#00ff88">DIRECT</span>'
+        : r.has_digi
+          ? '<span style="color:#aaff00">DIGI</span>'
+          : '<span style="color:var(--t3)">—</span>';
+    const type = r.is_mobile
+      ? '<span style="color:#ffaa00">📦 Mobile</span>'
+      : '<span style="color:var(--t3)">📍 Statiq.</span>';
+    const ts = r.last_seen
+      ? r.last_seen.replace('T', ' ').replace('Z', '').slice(0, 19)
+      : '—';
+    const dist = r.distance_km != null ? r.distance_km + ' km' : '—';
+    const az   = r.bearing_deg != null ? Math.round(r.bearing_deg) + '°' : '—';
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      `<td><a href="https://aprs.fi/?call=${encodeURIComponent(r.callsign)}" target="_blank" style="color:var(--bl);text-decoration:none" title="${r.last_comment||''}">${r.callsign}</a></td>` +
+      `<td style="text-align:right;color:var(--t1)">${r.frame_count}</td>` +
+      `<td>${type}</td>` +
+      `<td>${via}</td>` +
+      `<td style="color:var(--t3);font-size:9px">${ts}</td>` +
+      `<td style="color:var(--t2)">${dist}</td>` +
+      `<td style="color:var(--t2)">${az}</td>`;
+    frag.appendChild(tr);
+  }
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+}
+
+// ── Actions Principal ─────────────────────────────────────────────────────────
+function sendBeacon(){
+  fetch('/api/beacon/send',{method:'POST'}).then(r=>r.json())
+    .then(d=>showActionMsg(d.ok?('Beacon: '+d.packet):('Erreur: '+d.error),d.ok))
+    .catch(e=>showActionMsg('Erreur: '+e,false));
+}
+function restartDirewolf(){
+  if(!confirm('Redémarrer Direwolf ?'))return;
+  fetch('/api/direwolf/restart',{method:'POST'}).then(r=>r.json())
+    .then(d=>showActionMsg(d.ok?'Direwolf redémarré':('Erreur: '+d.error),d.ok))
+    .catch(e=>showActionMsg('Erreur: '+e,false));
+}
+function detectAioc(){
+  showMsg('aiocMsg','Détection AIOC…',true);
+  fetch('/api/aioc/detect',{method:'POST'}).then(r=>r.json()).then(d=>{
+    const msg=d.ok?`✓ AIOC détecté — ${d.adevice||d.alsa_name||''}`:('✗ Non trouvé: '+(d.error||'absent'));
+    showMsg('aiocMsg',msg,d.ok);
+    if(d.ok)loadAudioCfg();
+  }).catch(e=>showMsg('aiocMsg','Erreur: '+e,false));
+}
+// ── Télémétrie charts ────────────────────────────────────────────────────────
+let _charts={};
+function _mkChart(id,label,color){
+  const cs=getComputedStyle(document.documentElement);
+  const ctx=document.getElementById(id)?.getContext('2d');
+  if(!ctx)return null;
+  return new Chart(ctx,{
+    type:'line',
+    data:{labels:[],datasets:[{label,data:[],borderColor:color,backgroundColor:color+'22',borderWidth:1.5,pointRadius:0,fill:true,tension:0.3}]},
+    options:{animation:false,responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:true,ticks:{color:cs.getPropertyValue('--t3').trim()||'#556677',font:{size:9},maxTicksLimit:4},grid:{color:'rgba(30,42,58,.5)'}}}}
+  });
+}
+function initCharts(){
+  if(_charts.temp)return;
+  const cs=getComputedStyle(document.documentElement);
+  _charts.temp=_mkChart('chTemp','Temp',cs.getPropertyValue('--rd').trim()||'#ff4466');
+  _charts.ram =_mkChart('chRam','RAM', cs.getPropertyValue('--bl').trim()||'#00aaff');
+  _charts.cpu =_mkChart('chCpu','CPU', cs.getPropertyValue('--am').trim()||'#ffaa00');
+  _charts.disk=_mkChart('chDisk','Disk',cs.getPropertyValue('--g').trim()||'#00ff88');
+}
+function loadTelemetryCharts(){
+  initCharts();
+  fetch('/api/telemetry?hours=24').then(r=>r.json()).then(rows=>{
+    if(!rows||!rows.length)return;
+    const labels=rows.map(r=>new Date(r.timestamp).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}));
+    function fill(ch,key){if(!ch)return;ch.data.labels=labels;ch.data.datasets[0].data=rows.map(r=>r[key]??null);ch.update('none');}
+    fill(_charts.temp,'cpu_temp');
+    fill(_charts.ram,'ram_usage');
+    fill(_charts.cpu,'cpu_usage');
+    fill(_charts.disk,'disk_usage');
+  }).catch(()=>{});
+}
+function updateChartsLive(telem){
+  if(!_charts.temp)return;
+  const label=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  function push(ch,val){if(!ch||val==null)return;const MAX=288;ch.data.labels.push(label);ch.data.datasets[0].data.push(val);if(ch.data.labels.length>MAX){ch.data.labels.shift();ch.data.datasets[0].data.shift();}ch.update('none');}
+  push(_charts.temp,telem.cpu_temp);
+  push(_charts.ram,telem.ram_usage);
+  push(_charts.cpu,telem.cpu_usage);
+  push(_charts.disk,telem.disk_usage);
+}
+
 function loadSysteme(){
-  Promise.all([fetch('/api/system/pi').then(r=>r.json()),fetch('/api/system/audio').then(r=>r.json())]).then(([pi,audio])=>renderSysteme(pi,audio)).catch(()=>{document.getElementById('systemePanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur système</div>';});
+  fetch('/api/system/pi').then(r=>r.json()).then(pi=>{
+    renderSysteme(pi);
+    setTimeout(()=>{initCharts();loadTelemetryCharts();},50);
+  }).catch(()=>{document.getElementById('systemePanel').innerHTML='<div style="padding:16px;color:var(--rd)">Erreur système</div>';});
+}
+
+function loadAudioCfg(){
+  fetch('/api/system/audio').then(r=>r.json()).then(audio=>renderAudioCfg(audio)).catch(()=>{});
 }
 
 // ── Onglets ───────────────────────────────────────────────────────────────────
@@ -620,23 +1495,40 @@ document.querySelectorAll('.tab').forEach(btn=>{btn.onclick=()=>{
   document.querySelectorAll('.tc').forEach(x=>x.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('t-'+btn.dataset.t).classList.add('on');
-  if(btn.dataset.t==='wifi')loadWifi();
-  if(btn.dataset.t==='horloge')loadClock();
+  if(btn.dataset.t==='config'){loadConfigRaw();loadClock();loadAudioCfg();}
+  if(btn.dataset.t==='analyse'){
+    const activeAv=document.querySelector('.antab.on')?.dataset.av;
+    if(activeAv==='stats')loadAnalyse();
+    else if(activeAv==='historique')loadLogDates();
+  }
   if(btn.dataset.t==='meteo')loadMeteo();
-  if(btn.dataset.t==='config')loadConfigRaw();
+  else{if(sensorInterval){clearInterval(sensorInterval);sensorInterval=null;}}
   if(btn.dataset.t==='systeme')loadSysteme();
   if(btn.dataset.t==='terminal')setTimeout(()=>{if(termFit){termFit.fit();sock.emit('terminal_resize',{rows:term.rows,cols:term.cols});}},100);
   if(btn.dataset.t==='principal'){const activeP=document.querySelector('.ptab.on');if(activeP?.dataset.p==='monitor')monitorStart();}
 };});
 
-document.querySelectorAll('.ptab').forEach(btn=>{btn.onclick=()=>{
-  document.querySelectorAll('.ptab').forEach(x=>x.classList.remove('on'));
-  document.querySelectorAll('.pview').forEach(x=>x.classList.remove('on'));
+// Principal sub-tabs
+document.querySelectorAll('.ptab:not(.antab)').forEach(btn=>{btn.onclick=()=>{
+  document.querySelectorAll('.ptab:not(.antab)').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('#t-principal .pview').forEach(x=>x.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('pv-'+btn.dataset.p).classList.add('on');
+  // clear search on sub-tab switch
+  const gs=document.getElementById('globalSearch');if(gs)gs.value='';
   if(btn.dataset.p==='stations')renderStations();
   if(btn.dataset.p==='monitor')monitorStart();
   if(btn.dataset.p!=='monitor')monitorStop();
+};});
+
+// Analyse sub-tabs
+document.querySelectorAll('.antab').forEach(btn=>{btn.onclick=()=>{
+  document.querySelectorAll('.antab').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('#t-analyse .pview').forEach(x=>x.classList.remove('on'));
+  btn.classList.add('on');
+  document.getElementById('av-'+btn.dataset.av).classList.add('on');
+  if(btn.dataset.av==='stats')loadAnalyse();
+  if(btn.dataset.av==='historique')loadLogDates();
 };});
 
 // ── SocketIO ──────────────────────────────────────────────────────────────────
@@ -645,8 +1537,8 @@ if(SOCKETIO_ENABLED){
   sock=io();
   sock.on('connect',()=>{const dot=document.getElementById('dot');dot.style.background='#00ff88';dot.style.boxShadow='0 0 8px #00ff88';});
   sock.on('disconnect',()=>{const dot=document.getElementById('dot');dot.style.background='#ff4466';dot.style.boxShadow='0 0 8px #ff4466';});
-  sock.on('new_frame',f=>{addF(f);updMk(f);if(f.source)updSt(f.source,f);renderStations();pollStats();});
-  sock.on('telemetry',()=>pollStats());
+  sock.on('new_frame',f=>{updMk(f);if(f.source)updSt(f.source,f);addF(f);if(!_paused)renderStations();pollStats();});
+  sock.on('telemetry',t=>{pollStats();if(t)updateChartsLive(t);});
   // Terminal
   sock.on('terminal_output',d=>{if(term)term.write(d.data);});
   sock.on('terminal_exit',()=>{
