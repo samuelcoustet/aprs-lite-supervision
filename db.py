@@ -46,6 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_frames_source ON frames(source);
 CREATE INDEX IF NOT EXISTS idx_frames_origin ON frames(origin);
 CREATE INDEX IF NOT EXISTS idx_frames_type ON frames(data_type);
 CREATE INDEX IF NOT EXISTS idx_frames_hash ON frames(raw_hash);
+CREATE INDEX IF NOT EXISTS idx_frames_ts_src_orig ON frames(timestamp, source, origin);
 CREATE TABLE IF NOT EXISTS stations (
     callsign TEXT PRIMARY KEY,
     first_seen TEXT NOT NULL,
@@ -69,9 +70,33 @@ CREATE TABLE IF NOT EXISTS telemetry (
     ram_usage REAL,
     disk_usage REAL,
     direwolf_status TEXT DEFAULT '',
-    load_avg_1m REAL
+    load_avg_1m REAL,
+    bme_temp REAL,
+    bme_humidity REAL,
+    bme_pressure REAL,
+    box_temp REAL,
+    box_humidity REAL,
+    box_pressure REAL,
+    wind_speed REAL,
+    wind_dir REAL,
+    rain_1h REAL,
+    weather_source TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp);
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    direction TEXT NOT NULL DEFAULT 'out',
+    src TEXT NOT NULL DEFAULT '',
+    dst TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL DEFAULT '',
+    msg_no TEXT NOT NULL DEFAULT '',
+    via TEXT NOT NULL DEFAULT 'rf',
+    status TEXT NOT NULL DEFAULT 'pending',
+    acked INTEGER NOT NULL DEFAULT 0,
+    ack_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_chat_timestamp ON chat_messages(timestamp);
 """
 
 
@@ -107,6 +132,26 @@ class SidecarDB:
                     "INSERT INTO schema_version (version) VALUES (?)",
                     (SCHEMA_VERSION,),
                 )
+            # migrations: add columns if missing (existing DB)
+            existing = {r[1] for r in conn.execute("PRAGMA table_info(chat_messages)").fetchall()}
+            for col, defn in [("via", "TEXT NOT NULL DEFAULT 'rf'"), ("status", "TEXT NOT NULL DEFAULT 'pending'")]:
+                if col not in existing:
+                    conn.execute(f"ALTER TABLE chat_messages ADD COLUMN {col} {defn}")
+            tel_existing = {r[1] for r in conn.execute("PRAGMA table_info(telemetry)").fetchall()}
+            for col, defn in [
+                ("bme_temp",        "REAL"),
+                ("bme_humidity",    "REAL"),
+                ("bme_pressure",    "REAL"),
+                ("box_temp",        "REAL"),
+                ("box_humidity",    "REAL"),
+                ("box_pressure",    "REAL"),
+                ("wind_speed",      "REAL"),
+                ("wind_dir",        "REAL"),
+                ("rain_1h",         "REAL"),
+                ("weather_source",  "TEXT DEFAULT ''"),
+            ]:
+                if col not in tel_existing:
+                    conn.execute(f"ALTER TABLE telemetry ADD COLUMN {col} {defn}")
 
     def insert_frame(self, frame: dict) -> int:
         now = frame.get("timestamp") or datetime.now(timezone.utc).isoformat()
@@ -205,8 +250,11 @@ class SidecarDB:
                 """
                 INSERT INTO telemetry (
                     timestamp, cpu_temp, cpu_usage, ram_usage,
-                    disk_usage, direwolf_status, load_avg_1m
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    disk_usage, direwolf_status, load_avg_1m,
+                    bme_temp, bme_humidity, bme_pressure,
+                    box_temp, box_humidity, box_pressure,
+                    wind_speed, wind_dir, rain_1h, weather_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     telemetry.get("timestamp")
@@ -217,6 +265,16 @@ class SidecarDB:
                     telemetry.get("disk_usage"),
                     telemetry.get("direwolf_status", ""),
                     telemetry.get("load_avg_1m"),
+                    telemetry.get("bme_temp"),
+                    telemetry.get("bme_humidity"),
+                    telemetry.get("bme_pressure"),
+                    telemetry.get("box_temp"),
+                    telemetry.get("box_humidity"),
+                    telemetry.get("box_pressure"),
+                    telemetry.get("wind_speed"),
+                    telemetry.get("wind_dir"),
+                    telemetry.get("rain_1h"),
+                    telemetry.get("weather_source", ""),
                 ),
             )
 
@@ -335,10 +393,15 @@ class SidecarDB:
         }
 
     def get_analyse(self, since_hours: float | None = None) -> dict:
-        """Aggregate stats for the Analyse tab (time-filtered from live DB)."""
+        """Aggregate stats for the Analyse tab (time-filtered from live DB).
+
+        Uses the covering index idx_frames_ts_src_orig (timestamp, source, origin)
+        to avoid full-table scans on Pi 3. Station metadata comes from the
+        pre-aggregated stations table (859 rows) rather than scanning frames.
+        """
         if since_hours is not None:
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
-            tc = "AND f.timestamp >= ?"
+            tc = "AND timestamp >= ?"
             p: list[object] = [cutoff]
         else:
             tc = ""
@@ -346,37 +409,59 @@ class SidecarDB:
 
         with self._connect() as conn:
             total = conn.execute(
-                f"SELECT COUNT(*) FROM frames f WHERE 1=1 {tc}", p
+                f"SELECT COUNT(*) FROM frames WHERE 1=1 {tc}", p
             ).fetchone()[0]
 
             origins_rows = conn.execute(
-                f"SELECT origin, COUNT(*) AS cnt FROM frames f WHERE 1=1 {tc} GROUP BY origin",
+                f"SELECT origin, COUNT(*) AS cnt FROM frames WHERE 1=1 {tc} GROUP BY origin",
                 p,
             ).fetchall()
 
-            stations_rows = conn.execute(
+            # Force the covering index (timestamp, source, origin) so SQLite scans
+            # only the filtered time range instead of the full 743K-row table.
+            frames_rows = conn.execute(
                 f"""
                 SELECT
-                    f.source AS callsign,
+                    source,
                     COUNT(*) AS frame_count,
-                    MAX(f.timestamp) AS last_seen,
-                    MAX(CASE WHEN f.origin = 'rf' THEN 1 ELSE 0 END) AS has_direct,
-                    MAX(CASE WHEN f.origin = 'rf_digi' THEN 1 ELSE 0 END) AS has_digi,
-                    MAX(CASE WHEN f.speed IS NOT NULL AND f.speed > 0 THEN 1 ELSE 0 END) AS is_mobile,
-                    s.last_lat, s.last_lon, s.last_symbol, s.last_comment, s.last_origin
-                FROM frames f
-                LEFT JOIN stations s ON s.callsign = f.source
-                WHERE f.source != '' {tc}
-                GROUP BY f.source
+                    MAX(timestamp) AS last_seen,
+                    SUM(CASE WHEN origin='rf'      THEN 1 ELSE 0 END) AS cnt_rf,
+                    SUM(CASE WHEN origin='rf_digi' THEN 1 ELSE 0 END) AS cnt_digi
+                FROM frames INDEXED BY idx_frames_ts_src_orig
+                WHERE source != '' {tc}
+                GROUP BY source
                 ORDER BY last_seen DESC
+                LIMIT 300
                 """,
                 p,
             ).fetchall()
 
+            stations_map: dict[str, dict] = {}
+            for row in conn.execute(
+                "SELECT callsign, last_lat, last_lon, last_symbol, last_comment,"
+                " last_origin, last_speed FROM stations"
+            ).fetchall():
+                stations_map[row["callsign"]] = dict(row)
+
+        stations = []
+        for r in frames_rows:
+            st = dict(r)
+            meta = stations_map.get(r["source"], {})
+            st["callsign"]     = r["source"]
+            st["last_lat"]     = meta.get("last_lat")
+            st["last_lon"]     = meta.get("last_lon")
+            st["last_symbol"]  = meta.get("last_symbol")
+            st["last_comment"] = meta.get("last_comment")
+            st["last_origin"]  = meta.get("last_origin")
+            st["has_direct"]   = 1 if st.pop("cnt_rf", 0) > 0 else 0
+            st["has_digi"]     = 1 if st.pop("cnt_digi", 0) > 0 else 0
+            st["is_mobile"]    = 1 if (meta.get("last_speed") or 0) > 0 else 0
+            stations.append(st)
+
         return {
             "total_frames": total,
             "origins": {row["origin"]: row["cnt"] for row in origins_rows},
-            "stations": [dict(row) for row in stations_rows],
+            "stations": stations,
         }
 
     def export_frames_csv(
@@ -412,3 +497,64 @@ class SidecarDB:
         writer.writeheader()
         writer.writerows(telemetry)
         return output.getvalue()
+
+    def insert_chat(self, direction: str, src: str, dst: str, text: str, msg_no: str, via: str = "rf") -> int:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT INTO chat_messages (timestamp,direction,src,dst,text,msg_no,via,status) VALUES (?,?,?,?,?,?,?,?)",
+                (now, direction, src.upper(), dst.upper(), text, msg_no, via, "pending" if direction == "out" else "in"),
+            )
+            return cur.lastrowid
+
+    def ack_chat(self, src: str, msg_no: str):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE chat_messages SET acked=1, ack_at=?, status='acked' WHERE dst=? AND msg_no=? AND direction='out'",
+                (now, src.upper(), msg_no),
+            )
+
+    def set_chat_status(self, row_id: int, status: str, via: str | None = None):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            if via:
+                conn.execute(
+                    "UPDATE chat_messages SET status=?, via=? WHERE id=?",
+                    (status, via, row_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE chat_messages SET status=? WHERE id=?",
+                    (status, row_id),
+                )
+
+    def get_pending_retries(self, rf_timeout_s: int = 30, is_timeout_s: int = 90) -> list[dict]:
+        """Return outbound messages that need RF→IS retry or timeout→failed."""
+        now = datetime.now(timezone.utc)
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM chat_messages WHERE direction='out' AND status IN ('pending','retry_is') ORDER BY id"
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                age = (now - datetime.fromisoformat(d["timestamp"])).total_seconds()
+            except Exception:
+                continue
+            d["_age"] = age
+            if d["status"] == "pending" and age >= rf_timeout_s:
+                d["_action"] = "retry_is"
+            elif d["status"] == "retry_is" and age >= is_timeout_s:
+                d["_action"] = "failed"
+            else:
+                continue
+            result.append(d)
+        return result
+
+    def get_chat(self, n: int = 100) -> list[dict]:
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(
+                "SELECT * FROM chat_messages ORDER BY id DESC LIMIT ?", (n,)
+            ).fetchall()]

@@ -123,11 +123,33 @@ else:
 _connected_clients: dict[str, str] = {}  # sid → ip
 _clients_lock = threading.Lock()
 
+def _on_chat_event(event_type: str, msg_id: str, parsed: dict):
+    """Callback wired to JournalCollector for ACK/REJ/inbound messages."""
+    cfg = load_settings().get("LITE_CONFIG", {})
+    own = cfg.get("CALLSIGN", "").upper()
+    src = (parsed.get("source") or "").upper()
+    if event_type == "ack":
+        # ACK sent by dst station back to us — src=their callsign, msg_id=our msg_no
+        DB.ack_chat(src, msg_id)
+        socketio.emit("msg_acked", {"src": src, "msg_no": msg_id})
+    elif event_type == "msg":
+        # Inbound message addressed to our callsign
+        dst = (parsed.get("msg_to") or "").strip().upper()
+        if dst == own:
+            text = parsed.get("comment") or parsed.get("msg_text") or ""
+            DB.insert_chat("in", src, own, text, msg_id)
+            socketio.emit("chat_in", {
+                "src": src, "dst": own, "text": text, "msg_no": msg_id,
+                "timestamp": parsed.get("timestamp", ""),
+            })
+
+
 COLLECTOR = JournalCollector(
     db=DB,
     state=STATE,
     socketio=socketio,
     journal_unit=SETTINGS["JOURNAL_UNIT"],
+    on_msg_event=_on_chat_event,
 )
 COLLECTOR.start()
 atexit.register(COLLECTOR.stop)
@@ -458,6 +480,149 @@ def api_aioc_detect():
     return jsonify(detect_aioc_full())
 
 
+# ── APRS messaging ────────────────────────────────────────────────────────────
+
+def _retry_worker():
+    """Background thread: RF→IS retry after 30s, fail after 90s."""
+    import time
+    while True:
+        time.sleep(10)
+        try:
+            cfg = load_settings().get("LITE_CONFIG", {})
+            src = cfg.get("CALLSIGN", "N0CALL").upper()
+            server = cfg.get("IGSERVER", "euro.aprs2.net")
+            passcode = cfg.get("PASSCODE", "0")
+            for msg in DB.get_pending_retries(rf_timeout_s=30, is_timeout_s=90):
+                row_id = msg["id"]
+                if msg["_action"] == "retry_is":
+                    packet_is = _encode_aprs_message(src, msg["dst"], msg["text"], msg["msg_no"], via="is")
+                    ok, _ = _send_aprs_is(packet_is, server, 14580, src, passcode)
+                    if ok:
+                        DB.set_chat_status(row_id, "retry_is", via="is")
+                        socketio.emit("chat_status", {"id": row_id, "msg_no": msg["msg_no"],
+                                                      "dst": msg["dst"], "status": "retry_is", "via": "is"})
+                elif msg["_action"] == "failed":
+                    DB.set_chat_status(row_id, "failed")
+                    socketio.emit("chat_status", {"id": row_id, "msg_no": msg["msg_no"],
+                                                  "dst": msg["dst"], "status": "failed"})
+        except Exception:
+            pass
+
+import socket as _socket
+import threading as _threading
+
+_retry_thread = _threading.Thread(target=_retry_worker, daemon=True)
+_retry_thread.start()
+
+_msg_counter = 0
+_msg_counter_lock = _threading.Lock()
+
+def _next_msg_no() -> str:
+    global _msg_counter
+    with _msg_counter_lock:
+        _msg_counter = (_msg_counter % 999) + 1
+        return str(_msg_counter)
+
+def _encode_aprs_message(src: str, dst: str, text: str, msg_no: str, via: str = "is") -> str:
+    dst_pad = dst.upper().ljust(9)
+    path = "WIDE1-1" if via == "rf" else "TCPIP*"
+    dest = "APRS" if via == "rf" else "APNW01"
+    return f"{src.upper()}>{dest},{path}::{dst_pad}:{text}{{{msg_no}"
+
+def _send_rf(packet: str) -> tuple[bool, str]:
+    from collector import send_kiss_packet
+    return send_kiss_packet(packet)
+
+def _encode_aprs_ack(src: str, dst: str, msg_no: str) -> str:
+    dst_pad = dst.upper().ljust(9)
+    return f"{src.upper()}>APNW01,TCPIP*::{dst_pad}:ack{msg_no}"
+
+def _send_aprs_is(packet: str, server: str, port: int, callsign: str, passcode: str) -> tuple[bool, str]:
+    try:
+        with _socket.create_connection((server, port), timeout=10) as s:
+            banner = s.recv(512).decode("utf-8", errors="replace")
+            login = f"user {callsign} pass {passcode} vers aprs-lite-supervision 1.0\r\n"
+            s.sendall(login.encode())
+            s.recv(256)
+            s.sendall((packet + "\r\n").encode())
+        return True, ""
+    except Exception as e:
+        return False, str(e)
+
+
+@app.route("/api/chat/messages")
+def api_chat_messages():
+    if not session.get("logged_in"):
+        return jsonify([])
+    cfg = reload_settings()["LITE_CONFIG"]
+    own = cfg.get("CALLSIGN", "").upper()
+    # outbound from our DB
+    out_msgs = [dict(m, _type="out") for m in DB.get_chat(100)]
+    # inbound: frames table where data_type=message and msg_to=own
+    with DB._connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM frames WHERE data_type IN ('message','message_ack') ORDER BY id DESC LIMIT 200"
+        ).fetchall()
+    in_msgs = []
+    import re as _re
+    _msg_to_re = _re.compile(r'^:([A-Z0-9\-]{1,9})\s*:', _re.IGNORECASE)
+    for r in rows:
+        rd = dict(r)
+        src = (rd.get("source") or "").upper()
+        # extract addressee from raw: after first ':' in info field
+        raw = rd.get("raw") or ""
+        msg_to = ""
+        try:
+            info_start = raw.index(">")
+            colon = raw.index(":", info_start)
+            m = _msg_to_re.match(raw[colon+1:])
+            if m:
+                msg_to = m.group(1).strip().upper()
+        except (ValueError, AttributeError):
+            pass
+        if msg_to == own or src == own:
+            rd["msg_to"] = msg_to
+            in_msgs.append(rd)
+    return jsonify({"own": own, "outbound": out_msgs, "inbound": in_msgs})
+
+
+@app.route("/api/chat/send", methods=["POST"])
+def api_chat_send():
+    if not session.get("logged_in"):
+        return jsonify({"ok": False, "error": "Non authentifié"}), 401
+    data = request.get_json(force=True)
+    dst = (data.get("dst") or "").strip().upper()
+    text = (data.get("text") or "").strip()[:67]
+    if not dst or not text:
+        return jsonify({"ok": False, "error": "dst et text requis"}), 400
+    cfg = reload_settings()["LITE_CONFIG"]
+    src = cfg.get("CALLSIGN", "N0CALL").upper()
+    server = cfg.get("IGSERVER", "euro.aprs2.net")
+    passcode = cfg.get("PASSCODE", "0")
+    msg_no = _next_msg_no()
+    from datetime import datetime, timezone as _tz
+
+    # 1. RF via Direwolf/kissutil (prioritaire)
+    packet_rf = _encode_aprs_message(src, dst, text, msg_no, via="rf")
+    ok, err = _send_rf(packet_rf)
+    via = "rf"
+
+    # 2. Fallback APRS-IS si KISS inaccessible
+    if not ok:
+        packet_is = _encode_aprs_message(src, dst, text, msg_no, via="is")
+        ok, err = _send_aprs_is(packet_is, server, 14580, src, passcode)
+        via = "is"
+
+    packet = packet_rf if via == "rf" else packet_is
+    if ok:
+        row_id = DB.insert_chat("out", src, dst, text, msg_no, via=via)
+        socketio.emit("chat_out", {
+            "id": row_id, "src": src, "dst": dst, "text": text, "msg_no": msg_no, "via": via,
+            "timestamp": datetime.now(_tz.utc).isoformat(),
+        })
+    return jsonify({"ok": ok, "error": err, "packet": packet, "msg_no": msg_no, "via": via})
+
+
 @app.route("/api/beacon/send", methods=["POST"])
 def api_beacon_send():
     from collector import send_kiss_packet, _make_beacon_packet
@@ -469,7 +634,7 @@ def api_beacon_send():
 
 @app.route("/api/weather/send", methods=["POST"])
 def api_weather_send():
-    from collector import send_kiss_packet, make_weather_packet, get_sensor_data
+    from collector import send_kiss_packet, make_weather_packet, get_sensor_data, _fetch_openmeteo
     cfg = reload_settings()["LITE_CONFIG"]
     callsign = cfg.get("CALLSIGN", "N0CALL")
     try:
@@ -478,17 +643,53 @@ def api_weather_send():
     except ValueError:
         return jsonify({"ok": False, "error": "LAT/LON invalides dans config"}), 400
     sensor = get_sensor_data()
-    if not sensor.get("ok"):
-        return jsonify({"ok": False, "error": sensor.get("error", "Capteur indisponible")}), 503
-    packet = make_weather_packet(callsign, lat, lon, sensor)
+    om = _fetch_openmeteo()
+    if sensor.get("ok"):
+        # Hybride : valeurs locales + vent/pluie Open-Meteo
+        data = dict(sensor)
+        data["wind_speed"]     = om.get("wind_speed")
+        data["wind_dir"]       = om.get("wind_dir")
+        data["rain_1h"]        = om.get("rain_1h")
+        data["weather_source"] = "hybrid"
+    elif om:
+        # Capteur absent : tout Open-Meteo
+        data = {
+            "temperature":    om["temperature"],
+            "humidity":       om["humidity"],
+            "pressure":       om["pressure"],
+            "wind_speed":     om.get("wind_speed"),
+            "wind_dir":       om.get("wind_dir"),
+            "rain_1h":        om.get("rain_1h"),
+            "weather_source": "open-meteo",
+        }
+    else:
+        return jsonify({"ok": False, "error": "Capteur absent et Open-Meteo indisponible"}), 503
+    packet = make_weather_packet(callsign, lat, lon, data)
     ok, err = send_kiss_packet(packet)
     return jsonify({"ok": ok, "error": err, "packet": packet})
 
 
 @app.route("/api/sensor")
 def api_sensor():
-    from collector import get_sensor_data
-    return jsonify(get_sensor_data())
+    from collector import get_sensor_data, get_box_sensor_data, _fetch_openmeteo
+    outdoor = get_sensor_data()
+    if not outdoor.get("ok"):
+        om = _fetch_openmeteo()
+        if om:
+            outdoor = {
+                "ok": True,
+                "source": "open-meteo",
+                "temperature": om.get("temperature"),
+                "humidity":    om.get("humidity"),
+                "pressure":    om.get("pressure"),
+                "wind_speed":  om.get("wind_speed"),
+                "wind_dir":    om.get("wind_dir"),
+                "rain_1h":     om.get("rain_1h"),
+                "weather_code": om.get("weather_code"),
+                "chip":        "Open-Meteo",
+            }
+    box = get_box_sensor_data()
+    return jsonify({"outdoor": outdoor, "box": box})
 
 
 @app.route("/api/wifi/scan", methods=["POST"])
@@ -742,10 +943,18 @@ def api_logs_frames():
 
 # ── Analyse (stats agrégées) ─────────────────────────────────────────────────
 
+_analyse_cache: dict[str, tuple[float, dict]] = {}
+_ANALYSE_CACHE_TTL = 60  # seconds
+
 @app.route("/api/analyse")
 def api_analyse():
-    hours = request.args.get("hours")
+    import time as _t
+    hours = request.args.get("hours", "1")
     since_hours = float(hours) if hours and hours != "all" else None
+    cache_key = str(since_hours)
+    cached = _analyse_cache.get(cache_key)
+    if cached and _t.time() - cached[0] < _ANALYSE_CACHE_TTL:
+        return jsonify(cached[1])
     result = DB.get_analyse(since_hours=since_hours)
     cfg = SETTINGS["LITE_CONFIG"]
     try:
@@ -760,6 +969,7 @@ def api_analyse():
                 st["bearing_deg"] = b
     except Exception:
         pass
+    _analyse_cache[cache_key] = (_t.time(), result)
     return jsonify(result)
 
 
