@@ -622,7 +622,6 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <div style="font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;display:flex;align-items:center;gap:8px">
           🌐 Vue internet (aprs.fi)
           <button onclick="loadAprsFi()" style="background:none;border:1px solid var(--bd);border-radius:3px;color:var(--t3);font-size:9px;padding:1px 6px;cursor:pointer;font-family:inherit">↺</button>
-          <span style="font-size:9px;color:var(--t3);font-weight:400">— nécessite APRSFI_KEY dans config.env</span>
         </div>
         <div id="aprsFiPanel" style="font-size:11px"><span style="color:var(--t3)">Ouvrir l'onglet Système pour charger…</span></div>
       </div>
@@ -679,6 +678,8 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <button class="btn btn-g" id="termStartBtn" onclick="termStart()">▶ Démarrer</button>
         <button class="btn btn-r" id="termStopBtn" style="display:none" onclick="termStop()">■ Arrêter</button>
         <button class="btn" onclick="termClear()">⌫ Effacer</button>
+        <button class="btn" onclick="termSendCmd('cat /opt/aprs-lite/direwolf.conf')" title="Afficher direwolf.conf">📄 direwolf.conf</button>
+        <button class="btn" onclick="termSendCmd('cat /opt/aprs-lite/config.env')" title="Afficher config.env">📄 config.env</button>
         <span class="term-status" id="termStatus">Inactif</span>
       </div>
       <div id="terminal-container"></div>
@@ -1613,6 +1614,11 @@ function termStop(){
   document.getElementById('termStatus').style.color='var(--t3)';
 }
 function termClear(){if(term)term.clear();}
+function termSendCmd(cmd){
+  if(!term){termStart();setTimeout(()=>termSendCmd(cmd),1200);return;}
+  sock.emit('terminal_input',{data:cmd+'
+'});
+}
 
 // ── APRS-Lite TUI ─────────────────────────────────────────────────────────────
 let alTerm=null,alFit=null;

@@ -45,6 +45,11 @@ def load_settings() -> dict:
         "DASHBOARD_PORT": int(os.environ.get("DASHBOARD_PORT", str(DEFAULT_PORT))),
     }
     config_from_file = load_env_file(Path(env["CONFIG_PATH"]))
+    # Merge sidecar.env on top (contains APRSFI_KEY, BEACON_*, etc.)
+    sidecar_env_path = Path(__file__).parent / "sidecar.env"
+    if sidecar_env_path.exists():
+        sidecar_cfg = load_env_file(sidecar_env_path)
+        config_from_file = {**config_from_file, **sidecar_cfg}
     env["LITE_CONFIG"] = config_from_file
     env["CALLSIGN"] = config_from_file.get("CALLSIGN", "APRS-LITE")
     env["COMMENT"] = config_from_file.get("COMMENT", "APRS Lite sidecar dashboard")
