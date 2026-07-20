@@ -180,18 +180,18 @@ def nu_to_rgba(nu, nu_threshold):
     """
     if nu < -0.7:
         # Full LOS: solid green
-        return (0, 200, 60, 200)
+        return (0, 200, 60, 217)
     elif nu < 0.0:
         # Near-LOS: slight fade, still bright green
         t = (nu + 0.7) / 0.7   # 0→1 as ν goes -0.7→0
         g = int(200 - t * 20)
-        return (0, g, 60, 185)
+        return (0, g, 60, 217)
     else:
         # Diffraction zone (0 ≤ ν < nu_threshold)
         t = nu / nu_threshold   # 0→1
         r = int(t * 180)
         g = int(200 - t * 80)
-        a = int(185 - t * 50)
+        a = int(217 - t * 50)
         return (r, g, 60, a)
 
 
