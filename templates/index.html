@@ -2397,13 +2397,28 @@ function loadTelemetryCharts(){
 }
 let _bmeRange=24;
 let _bmeCharts={};
+function _mkBmeChart(id,label,color){
+  const cs=getComputedStyle(document.documentElement);
+  const ctx=document.getElementById(id)?.getContext('2d');
+  if(!ctx)return null;
+  const tc=cs.getPropertyValue('--t3').trim()||'#556677';
+  return new Chart(ctx,{
+    type:'line',
+    data:{labels:[],datasets:[{label,data:[],borderColor:color,backgroundColor:color+'22',borderWidth:1.5,pointRadius:0,fill:true,tension:0.3}]},
+    options:{animation:false,responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{
+        x:{display:true,ticks:{color:tc,font:{size:8},maxTicksLimit:5,maxRotation:0},grid:{color:'rgba(30,42,58,.25)'}},
+        y:{display:true,ticks:{color:tc,font:{size:9},maxTicksLimit:4},grid:{color:'rgba(30,42,58,.5)'}}
+      }}
+  });
+}
 function initBmeCharts(){
   const cs=getComputedStyle(document.documentElement);
-  if(!_bmeCharts.temp)_bmeCharts.temp=_mkChart('chBmeTemp','Temp',cs.getPropertyValue('--rd').trim()||'#ff4466');
-  if(!_bmeCharts.hum)_bmeCharts.hum=_mkChart('chBmeHum','Hum',cs.getPropertyValue('--bl').trim()||'#00aaff');
-  if(!_bmeCharts.pres)_bmeCharts.pres=_mkChart('chBmePres','Pres',cs.getPropertyValue('--g').trim()||'#00ff88');
-  if(!_bmeCharts.wind)_bmeCharts.wind=_mkChart('chBmeWind','Vent',cs.getPropertyValue('--am').trim()||'#ffaa00');
-  if(!_bmeCharts.rain)_bmeCharts.rain=_mkChart('chBmeRain','Pluie','#44aaff');
+  if(!_bmeCharts.temp)_bmeCharts.temp=_mkBmeChart('chBmeTemp','Temp',cs.getPropertyValue('--rd').trim()||'#ff4466');
+  if(!_bmeCharts.hum)_bmeCharts.hum=_mkBmeChart('chBmeHum','Hum',cs.getPropertyValue('--bl').trim()||'#00aaff');
+  if(!_bmeCharts.pres)_bmeCharts.pres=_mkBmeChart('chBmePres','Pres',cs.getPropertyValue('--g').trim()||'#00ff88');
+  if(!_bmeCharts.wind)_bmeCharts.wind=_mkBmeChart('chBmeWind','Vent',cs.getPropertyValue('--am').trim()||'#ffaa00');
+  if(!_bmeCharts.rain)_bmeCharts.rain=_mkBmeChart('chBmeRain','Pluie','#44aaff');
 }
 function loadBmeCharts(hours){
   initBmeCharts();
@@ -2440,6 +2455,7 @@ function setBmeRange(h){
     b.style.color=active?'#fff':'var(--t2)';
     b.style.border=active?'none':'1px solid var(--bd)';
   });
+  Object.keys(_bmeCharts).forEach(k=>{if(_bmeCharts[k]){_bmeCharts[k].destroy();_bmeCharts[k]=null;}});
   loadBmeCharts(h);
 }
 function updateChartsLive(telem){

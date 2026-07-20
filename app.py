@@ -312,7 +312,14 @@ def api_stats():
 
 @app.route("/api/telemetry")
 def api_telemetry():
-    return jsonify(DB.get_telemetry(hours=int(request.args.get("hours", 24))))
+    hours = int(request.args.get("hours", 24))
+    rows  = DB.get_telemetry(hours=hours)
+    # Downsample to ~200 points so the chart stays readable and time-scale is uniform
+    target = 200
+    if len(rows) > target:
+        step = len(rows) / target
+        rows = [rows[int(i * step)] for i in range(target)]
+    return jsonify(rows)
 
 
 @app.route("/api/export/frames.csv")
