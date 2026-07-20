@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>APRS Lite Supervision</title>
+
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="apple-touch-icon" href="/static/favicon.svg">
+<title>RELAIS APRS SUPERVISION — {{ config.callsign }}</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
@@ -163,7 +166,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
 /* APRS sprite icon */
 .aprs-sp{display:inline-block;width:24px;height:24px;image-rendering:pixelated}
 /* Map markers */
-.map-flt-btn{background:rgba(10,14,20,.82);border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:2px 7px;cursor:pointer;font-family:inherit;transition:all .15s}
+.map-flt-btn{background:rgba(10,14,20,.82);border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:0 7px;height:20px;line-height:20px;cursor:pointer;font-family:inherit;transition:all .15s;white-space:nowrap}
 .map-flt-btn.on{background:rgba(10,14,20,.82);border-color:var(--t1);color:#fff;font-weight:700}
 .map-flt-btn:hover{color:var(--t1)}
 .aprs-mk{background:none!important;border:none!important;overflow:visible!important}
@@ -193,12 +196,13 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
 <header class="hdr">
   <div class="hdr-l">
     <div class="dot" id="dot"></div>
-    <div class="logo">APRS LITE SUPERVISION<span><a href="https://aprs.fi/#!call={{ config.callsign }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:4px"><img src="/static/aprsfi-favicon.ico" width="12" height="12" style="vertical-align:middle;border-radius:2px"> aprs.fi</a></span></div>
+    <div class="logo">RELAIS APRS SUPERVISION — {{ config.callsign }}<span><a href="https://aprs.fi/#!call={{ config.callsign }}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none;display:inline-flex;align-items:center;gap:4px"><img src="/static/aprsfi-favicon.ico" width="12" height="12" style="vertical-align:middle;border-radius:2px"> aprs.fi</a></span></div>
   </div>
   <div class="hdr-s">
     <div>TRAMES <span class="v" id="hT">0</span></div>
     <div>STATIONS <span class="v" id="hS">0</span></div>
     <div>UPTIME <span class="v" id="hU">--</span></div>
+    <a href="/doc" target="_blank" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:2px 8px;text-decoration:none;font-family:inherit">📖 Notice</a>
     <form method="post" action="/logout" style="margin:0"><button type="submit" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit">⏻ Déconnexion</button></form>
   </div>
 </header>
@@ -224,12 +228,18 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <option value="osm">OpenStreetMap</option>
         <option value="satellite">Satellite</option>
       </select>
-      <!-- Filtre carte -->
+      <!-- Filtre carte — rangée 1 : stations -->
       <div style="display:flex;gap:4px">
         <button class="map-flt-btn on" data-mf="all" onclick="setMapFlt('all')" title="Toutes les stations">Tout</button>
         <button class="map-flt-btn" data-mf="rf" onclick="setMapFlt('rf')" title="RF seulement">RF</button>
         <button class="map-flt-btn" data-mf="is" onclick="setMapFlt('is')" title="iGate IS seulement">IS</button>
         <button class="map-flt-btn" data-mf="igtx" onclick="setMapFlt('igtx')" title="IS→RF relay">iGTX</button>
+      </div>
+      <!-- Filtre carte — rangée 2 : calques -->
+      <div style="display:flex;gap:4px">
+        <button id="trackBtn" class="map-flt-btn on" onclick="toggleTracks()" title="Masquer les tracés">Tracés</button>
+        <button id="aprsfiBtn" class="map-flt-btn" onclick="toggleAprsfiOverlay()" title="Overlay positions APRS.fi">APRS.fi</button>
+        <button id="coverageBtn" class="map-flt-btn" onclick="toggleCoverage()" title="Couverture RF (terrain + LOS)">RF Cov.</button>
       </div>
       <!-- Légende couleurs + bouton icônes -->
       <div style="background:rgba(10,14,20,.88);border:1px solid var(--bd);border-radius:5px;padding:5px 8px;font-size:10px;backdrop-filter:blur(6px);line-height:1.7">
@@ -237,6 +247,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <div><span style="color:#aaff00;font-size:13px">●</span> RF digipeaté</div>
         <div><span style="color:#00aaff;font-size:13px">●</span> IS / iGate</div>
         <div><span style="color:#ffaa00;font-size:13px">●</span> IS→RF relay</div>
+        <div id="legendCoverage" style="display:none"><span style="display:inline-block;width:12px;height:10px;background:rgba(0,200,60,.72);border:1px solid #00c840;border-radius:2px;vertical-align:middle;margin-right:2px"></span> Couverture RF</div>
         <div style="border-top:1px solid var(--bd);margin-top:4px;padding-top:4px;text-align:center">
           <button onclick="toggleIconLegend()" style="background:none;border:none;color:var(--t2);cursor:pointer;font-size:10px;font-family:inherit;padding:0">🗺 Icônes APRS</button>
         </div>
@@ -262,7 +273,9 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
       <button class="tab" data-t="config">⚙️ Config</button>
       <button class="tab" data-t="meteo">🌤 Météo</button>
       <button class="tab" data-t="systeme">🖥 Système</button>
+      <button class="tab" data-t="usb">🔌 USB</button>
       <button class="tab" data-t="terminal">💻 Terminal</button>
+      <button class="tab" data-t="aprslite">📟 APRS-Lite</button>
     </div>
 
     <!-- ══ PRINCIPAL ══ -->
@@ -273,7 +286,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <span class="rf-pill">IS-RX <span id="rfIs" style="color:var(--bl)">0</span></span>
         <span class="rf-pill">Beacons <span id="rfBcn" style="color:var(--t2)">0</span></span>
         <input id="globalSearch" placeholder="🔍 Recherche…" oninput="globalSearchHandler()" style="flex:1;min-width:60px;background:var(--b3);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-size:10px;padding:3px 6px;outline:none;font-family:inherit">
-        <button class="act-btn" onclick="sendBeacon()" title="Envoyer beacon APRS">📡</button>
+        <button class="act-btn" onclick="sendBeaconAuto()" title="Envoyer beacon (type configuré)">📡</button>
         <button class="act-btn act-warn" onclick="restartDirewolf()" title="Redémarrer Direwolf">↺</button>
       </div>
       <div id="actionMsg" style="display:none;padding:3px 8px;font-size:10px;border-radius:3px;margin:2px 8px"></div>
@@ -281,6 +294,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <button class="ptab on" data-p="frames">📡 Trames</button>
         <button class="ptab" data-p="stations">📍 Stations</button>
         <button class="ptab" data-p="monitor">🖥 Monitor</button>
+        <button class="ptab" data-p="messages">💬 Messages</button>
         <span style="flex:1"></span>
         <button id="pauseBtn" onclick="togglePause()" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t2);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit;margin-right:4px;transition:all .2s">⏸ Pause</button>
       </div>
@@ -302,6 +316,39 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
       <!-- Monitor (SSE journalctl) -->
       <div class="pview" id="pv-monitor" style="flex-direction:column">
         <div class="mon-log" id="monLog"></div>
+      </div>
+      <!-- Messages APRS -->
+      <div class="pview" id="pv-messages" style="flex-direction:column;overflow:hidden">
+        <!-- Compose -->
+        <div style="padding:8px 10px;background:var(--b0);border-bottom:1px solid var(--bd);flex-shrink:0">
+          <div style="display:flex;gap:6px;align-items:flex-end">
+            <div style="display:flex;flex-direction:column;gap:3px">
+              <label style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">Destinataire</label>
+              <input id="msgDst" placeholder="F6XYZ-5" maxlength="9" style="width:90px;background:var(--b1);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 6px">
+            </div>
+            <div style="display:flex;flex-direction:column;gap:3px;flex:1">
+              <label style="font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">Message <span style="color:var(--t3)" id="msgLen">0/67</span></label>
+              <input id="msgText" placeholder="Votre message APRS…" maxlength="67" oninput="document.getElementById('msgLen').textContent=this.value.length+'/67'"
+                style="background:var(--b1);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 6px"
+                onkeydown="if(event.key==='Enter')sendChatMsg()">
+            </div>
+            <button onclick="sendChatMsg()" style="background:var(--g);border:none;border-radius:4px;color:#000;font-size:11px;font-weight:700;padding:5px 12px;cursor:pointer;font-family:inherit;white-space:nowrap">📤 Envoyer</button>
+          </div>
+          <div id="msgStatus" style="font-size:10px;margin-top:4px;color:var(--t3);min-height:14px"></div>
+        </div>
+        <!-- Tables reçus / envoyés -->
+        <div style="display:flex;flex:1;overflow:hidden;gap:0">
+          <!-- Reçus -->
+          <div style="flex:1;display:flex;flex-direction:column;border-right:1px solid var(--bd);overflow:hidden">
+            <div style="padding:5px 8px;font-size:10px;font-weight:600;color:var(--t2);background:var(--b0);border-bottom:1px solid var(--bd);flex-shrink:0">📥 Reçus</div>
+            <div id="msgIn" style="overflow-y:auto;flex:1;font-size:10px;font-family:'JetBrains Mono',monospace"></div>
+          </div>
+          <!-- Envoyés -->
+          <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+            <div style="padding:5px 8px;font-size:10px;font-weight:600;color:var(--t2);background:var(--b0);border-bottom:1px solid var(--bd);flex-shrink:0">📤 Envoyés</div>
+            <div id="msgOut" style="overflow-y:auto;flex:1;font-size:10px;font-family:'JetBrains Mono',monospace"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -413,6 +460,25 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <button class="act-btn act-ok" style="width:100%;margin:4px 0" onclick="saveConfig()">💾 Sauvegarder et redémarrer Direwolf</button>
         <div id="cfgMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:4px"></div>
 
+
+        <!-- Section : Beacon automatique -->
+        <div class="cfg-section-hdr" style="margin-top:10px">📡 Beacon automatique</div>
+        <div class="frm-row">
+          <span class="frm-lbl">Type de beacon</span>
+          <select class="frm-in" id="cfg_beacon_type">
+            <option value="position">Position APRS</option>
+            <option value="weather">Météo APRS</option>
+            <option value="both">Les deux</option>
+          </select>
+        </div>
+        <div class="frm-row">
+          <span class="frm-lbl">Intervalle (min)</span>
+          <input class="frm-in" id="cfg_beacon_interval" type="number" min="0" max="1440" placeholder="0 = manuel">
+        </div>
+        <div style="font-size:9px;color:var(--t3);margin-bottom:6px">0 = envoi manuel uniquement · Max 1440 min</div>
+        <button class="act-btn act-ok" style="width:100%;margin:4px 0" onclick="saveBeaconConfig()">💾 Appliquer</button>
+        <div id="beaconCfgMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:4px"></div>
+
         <!-- Section : Audio / AIOC -->
         <div class="cfg-section-hdr" style="margin-top:10px">🎙 Audio / AIOC</div>
         <div id="audioCfgPanel" style="font-size:11px;color:var(--t3);margin-bottom:6px">Chargement…</div>
@@ -441,15 +507,97 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <button class="act-btn act-warn" style="margin-top:4px" onclick="clockSet()">⚙ Appliquer</button>
         <div id="clockMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:6px"></div>
 
+        <!-- Section : Mots de passe -->
+        <div class="cfg-section-hdr" style="margin-top:10px">🔑 Mots de passe</div>
+        <div style="font-size:10px;color:var(--t3);margin-bottom:6px">Mot de passe dashboard (connexion)</div>
+        <div class="frm-row"><span class="frm-lbl">Actuel</span><input class="frm-in" id="pwdOld" type="password" placeholder="••••"></div>
+        <div class="frm-row"><span class="frm-lbl">Nouveau</span><input class="frm-in" id="pwdNew" type="password" placeholder="••••"></div>
+        <div class="frm-row"><span class="frm-lbl">Confirmer</span><input class="frm-in" id="pwdNew2" type="password" placeholder="••••"></div>
+        <button class="act-btn act-ok" style="margin-top:4px" onclick="changeDashPwd()">💾 Changer mot de passe dashboard</button>
+        <div id="dashPwdMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:6px"></div>
+        <div class="frm-sep"></div>
+        <div style="font-size:10px;color:var(--t3);margin-bottom:6px">Mot de passe système Pi (SSH/sudo)</div>
+        <div class="frm-row"><span class="frm-lbl">Actuel</span><input class="frm-in" id="piPwdOld" type="password" placeholder="••••"></div>
+        <div class="frm-row"><span class="frm-lbl">Nouveau</span><input class="frm-in" id="piPwdNew" type="password" placeholder="••••"></div>
+        <div class="frm-row"><span class="frm-lbl">Confirmer</span><input class="frm-in" id="piPwdNew2" type="password" placeholder="••••"></div>
+        <button class="act-btn act-warn" style="margin-top:4px" onclick="changePiPwd()">💾 Changer mot de passe Pi</button>
+        <div id="piPwdMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:6px"></div>
+
+      </div>
+    </div>
+
+    <!-- ══ USB ══ -->
+    <div class="tc" id="t-usb">
+      <div class="panel" style="overflow-y:auto;padding:10px">
+
+        <!-- Statut clé -->
+        <div class="cfg-section-hdr">🔌 Clé USB</div>
+        <div id="usbStatusBar" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:8px;background:var(--b0);border-radius:6px">
+          <div id="usbDot" style="width:10px;height:10px;border-radius:50%;background:var(--t3);flex-shrink:0"></div>
+          <div style="flex:1">
+            <div id="usbStatusTxt" style="font-size:11px;font-weight:600">Vérification…</div>
+            <div id="usbFreeTxt" style="font-size:9px;color:var(--t3)"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <button class="act-btn act-ok" style="flex:1" onclick="usbMount()">⬆ Monter</button>
+          <button class="act-btn act-warn" style="flex:1" onclick="usbEject()">⏏ Éjecter</button>
+        </div>
+        <div id="usbMountMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-bottom:8px"></div>
+
+        <!-- Sauvegarde manuelle -->
+        <div class="cfg-section-hdr" style="margin-top:4px">💾 Sauvegarde</div>
+        <div style="font-size:10px;color:var(--t3);margin-bottom:6px">
+          Dernière : <span id="usbLastBackup">—</span><br>
+          Cron automatique : tous les jours à 03h00 + à chaque branchement
+        </div>
+        <button class="act-btn act-ok" style="width:100%;margin-bottom:6px" onclick="usbBackup()">▶ Lancer sauvegarde maintenant</button>
+        <div id="usbBackupMsg" style="display:none;padding:6px;font-size:10px;border-radius:3px;margin-bottom:6px;white-space:pre-wrap;max-height:150px;overflow-y:auto"></div>
+
+        <!-- Liste des sauvegardes -->
+        <div class="cfg-section-hdr" style="margin-top:4px">📋 Historique</div>
+        <div id="usbBackupList" style="font-size:10px;color:var(--t3)">—</div>
+
       </div>
     </div>
 
     <!-- ══ MÉTÉO ══ -->
     <div class="tc" id="t-meteo">
       <div class="panel" style="overflow-y:auto">
-        <div style="font-weight:600;margin-bottom:6px">Capteur BME280/BME68x</div>
-        <div id="sensorDisplay" style="background:var(--b0);border-radius:6px;padding:10px;margin-bottom:10px">
+        <div style="background:var(--b0);border-radius:6px;padding:10px;margin-bottom:10px">
+          <div style="font-weight:600;font-size:11px;margin-bottom:6px;color:var(--g)">🌤️ Extérieur</div>
           <div id="sensorData" style="font-size:12px;color:var(--t3)">Chargement…</div>
+        </div>
+        <div class="frm-sep"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div id="bmeHistoTitle" style="font-weight:600;font-size:11px">Historique BME280</div>
+          <div style="display:flex;gap:4px">
+            <button class="bme-range-btn" data-h="24" onclick="setBmeRange(24)" style="font-size:9px;padding:2px 7px;border-radius:3px;background:var(--bl);color:#fff;border:none;cursor:pointer">24h</button>
+            <button class="bme-range-btn" data-h="48" onclick="setBmeRange(48)" style="font-size:9px;padding:2px 7px;border-radius:3px;background:var(--b3);color:var(--t2);border:1px solid var(--bd);cursor:pointer">48h</button>
+            <button class="bme-range-btn" data-h="168" onclick="setBmeRange(168)" style="font-size:9px;padding:2px 7px;border-radius:3px;background:var(--b3);color:var(--t2);border:1px solid var(--bd);cursor:pointer">7j</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div>
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Température (°C)</div>
+            <div style="position:relative;height:80px"><canvas id="chBmeTemp" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Humidité Relative (%)</div>
+            <div style="position:relative;height:80px"><canvas id="chBmeHum" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Pression Atmosphérique (hPa)</div>
+            <div style="position:relative;height:80px"><canvas id="chBmePres" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div id="bmeWindBlock">
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Vent (km/h)</div>
+            <div style="position:relative;height:80px"><canvas id="chBmeWind" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div id="bmeRainBlock">
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Précipitations 1h (mm)</div>
+            <div style="position:relative;height:80px"><canvas id="chBmeRain" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
         </div>
         <button class="act-btn act-ok" onclick="sendWeather()" id="wxSendBtn">📡 Envoyer beacon météo maintenant</button>
         <div id="wxMsg" style="display:none;padding:4px 6px;font-size:10px;border-radius:3px;margin-top:6px"></div>
@@ -475,6 +623,12 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         </div>
         <div id="aprsFiPanel" style="font-size:11px"><span style="color:var(--t3)">Ouvrir l'onglet Système pour charger…</span></div>
       </div>
+      <!-- SECOND CAPTEUR DÉSACTIVÉ (0x77 absent)
+      <div style="padding:8px 10px;border-top:1px solid var(--bd);flex-shrink:0">
+        <div style="font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">📦 Boîtier</div>
+        <div id="sensorDataBox" style="font-size:12px;color:var(--t3)">Chargement…</div>
+      </div>
+      -->
       <div style="padding:8px 10px;border-top:1px solid var(--bd);flex-shrink:0">
         <div style="font-family:'Exo 2',sans-serif;font-size:11px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Télémétrie 24h</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -493,6 +647,14 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
           <div style="display:flex;flex-direction:column">
             <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Disque (%)</div>
             <div style="position:relative;height:70px"><canvas id="chDisk" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Charge système (load 1m)</div>
+            <div style="position:relative;height:70px"><canvas id="chLoad" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div style="font-size:9px;color:var(--t3);margin-bottom:2px">Direwolf (1=actif)</div>
+            <div style="position:relative;height:70px"><canvas id="chDirewolf" style="position:absolute;inset:0;width:100%!important;height:100%!important"></canvas></div>
           </div>
         </div>
       </div>
@@ -517,6 +679,18 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
         <span class="term-status" id="termStatus">Inactif</span>
       </div>
       <div id="terminal-container"></div>
+    </div>
+
+    <!-- ══ APRS-LITE ══ -->
+    <div class="tc" id="t-aprslite" style="flex-direction:column">
+      <div class="term-bar">
+        <button class="btn btn-g" id="alStartBtn" onclick="alStart()">▶ Démarrer APRS-Lite</button>
+        <button class="btn btn-r" id="alStopBtn" style="display:none" onclick="alStop()">■ Arrêter</button>
+        <button class="btn" id="alQuitBtn" style="display:none" onclick="alQuit()" title="Envoie 'x' — quitter proprement le TUI">⏏ Quitter</button>
+        <span class="term-status" id="alStatus">Inactif</span>
+        <span style="margin-left:auto;font-size:10px;color:var(--t3);font-family:'JetBrains Mono',monospace">📟 APRS-Lite TUI — /opt/aprs-lite/aprs-lite.py</span>
+      </div>
+      <div id="al-container" style="flex:1;overflow:hidden;background:#0a0e14;padding:4px"></div>
     </div>
   </div>
 </div>
@@ -614,6 +788,188 @@ function exportHistoCsv(){
   window.open('/api/logs/frames?date=' + date + '&format=csv');
 }
 
+
+// ════════════════ DÉCODEUR APRS ════════════════
+
+// Convertit kn → km/h
+function kn2kmh(kn){ return Math.round(kn * 1.852); }
+// Convertit ft → m
+function ft2m(ft){ return Math.round(ft * 0.3048); }
+// Convertit °F → °C
+function f2c(f){ return ((f-32)*5/9).toFixed(1); }
+// Cap en lettres
+function capStr(deg){
+  const dirs=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSO','SO','OSO','O','ONO','NO','NNO'];
+  return dirs[Math.round(deg/22.5)%16];
+}
+// Décode les coordonnées APRS DDMM.mmN → degrés décimaux
+function aprsCoord(str, hemi){
+  if(!str)return null;
+  str=str.replace(/[^\d.]/g,'');
+  const dd=parseInt(str.substring(0,2),10);
+  const mm=parseFloat(str.substring(2));
+  let d=dd+mm/60;
+  if(hemi==='S'||hemi==='W')d=-d;
+  return d;
+}
+
+// Décode le chemin (path) en phrases lisibles
+function decodePath(path){
+  if(!path)return '';
+  const parts=(path||'').split(',');
+  const labels=[];
+  for(const p of parts){
+    if(p==='TCPIP*')       labels.push('via internet');
+    else if(p==='TCPIP')   labels.push('vers internet');
+    else if(/^qAC/.test(p))labels.push('reçu par serveur APRS-IS');
+    else if(/^qAO/.test(p))labels.push('entendu par iGate');
+    else if(/^qAS/.test(p))labels.push('relayé par iGate');
+    else if(/^qAR/.test(p))labels.push('reçu RF→IS');
+    else if(/^T2/.test(p)) labels.push('serveur '+p);
+    else if(/WIDE1-1/.test(p))labels.push('digi local (WIDE1)');
+    else if(/WIDE2/.test(p)) labels.push('digi régional (WIDE2)');
+    else if(/\*$/.test(p))  labels.push(p.replace('*','')+' (entendu)');
+  }
+  return labels.join(' → ');
+}
+
+// Décode données météo APRS : _ccc/sssgtttrrr...
+function decodeWx(raw){
+  if(!raw)return null;
+  // Chercher le bloc météo après _ ou dans le commentaire
+  const m=raw.match(/_(\d{3})\/(\d{3})g(\d{3})t(-?\d{3})r(\d{3})p(\d{3})P(\d{3})h(\d{2})b(\d{5})/);
+  if(!m)return null;
+  const dir=parseInt(m[1]),spd=parseInt(m[2]),gust=parseInt(m[3]);
+  const tempF=parseInt(m[4]),rain1h=parseInt(m[5]),rain24h=parseInt(m[7]);
+  const hum=parseInt(m[8]),pres=parseInt(m[9]);
+  return {
+    windDir: dir, windDirStr: capStr(dir),
+    windSpd: kn2kmh(spd), windGust: kn2kmh(gust),
+    tempC: f2c(tempF),
+    rain1h: (rain1h*0.254).toFixed(1),
+    rain24h: (rain24h*0.254).toFixed(1),
+    humidity: hum===00?100:hum,
+    pressure: (pres/10).toFixed(1)
+  };
+}
+
+// Résumé court pour la liste de trames
+function aprsShortSummary(f){
+  const raw=f.raw||'';
+  const comment=f.comment||'';
+
+  // Météo
+  const wx=decodeWx(raw);
+  if(wx){
+    let s=`🌤 ${wx.windDirStr} ${wx.windSpd}km/h`;
+    if(wx.windGust>wx.windSpd)s+=` (rafale ${wx.windGust})`;
+    s+=` · ${wx.tempC}°C · HR:${wx.humidity}% · ${wx.pressure}hPa`;
+    if(parseFloat(wx.rain1h)>0)s+=` · Pluie:${wx.rain1h}mm/h`;
+    return s;
+  }
+
+  // Télémétrie T#
+  if(/^T#/.test(comment)){
+    const vals=comment.replace('T#','').split(',');
+    return `📊 Télémétrie seq:${vals[0]} — ${vals.slice(1,5).join('/')}`;
+  }
+
+  // Objet ;
+  if(raw.match(/;[A-Z0-9 -]{9}\*/)){
+    const obj=raw.match(/;([A-Z0-9 -]{9})\*/);
+    return `📌 Objet: ${obj?obj[1].trim():''} — ${comment.substring(0,60)}`;
+  }
+
+  // Message :
+  if(f.data_type==='message'){
+    const to=(raw.match(/:([A-Z0-9-]{1,9})\s*:/))?.[1]?.trim();
+    const txt=raw.replace(/^.*?:[A-Z0-9-]{1,9}\s*:/,'').substring(0,80);
+    return `💬 → ${to||'?'}: ${txt}`;
+  }
+
+  // Status >
+  if(f.data_type==='status'){
+    return `ℹ️ ${comment.substring(0,80)}`;
+  }
+
+  // Position avec altitude
+  if(f.altitude!=null){
+    let s=`📍 Alt: ${ft2m(f.altitude)}m`;
+    if(f.speed!=null&&f.speed>0)s+=` · ${kn2kmh(f.speed)}km/h ${capStr(f.course||0)}`;
+    if(comment)s+=` — ${comment.substring(0,50)}`;
+    return s;
+  }
+
+  // Position simple
+  if(f.lat!=null){
+    let s='';
+    if(f.speed!=null&&f.speed>0)s=`🚗 ${kn2kmh(f.speed)}km/h ${capStr(f.course||0)} — `;
+    else s='📍 ';
+    s+=comment.substring(0,70)||'Position';
+    return s;
+  }
+
+  return comment.substring(0,80)||raw.substring(0,80);
+}
+
+// Panneau détail enrichi
+function aprsDetailRows(f){
+  const raw=f.raw||'';
+  const rows=[];
+  const add=(l,v,cls)=>{ if(v!=null&&v!==''&&v!=='-')rows.push({l,v,cls}); };
+
+  add('Source', f.source);
+  add('Destination', f.destination);
+
+  // Path décodé
+  if(f.path){ add('Chemin RF/IS', decodePath(f.path)); }
+
+  add('Type', f.data_type);
+  add('Origine', f.origin||'-');
+
+  // Distance et azimut
+  if(f.distance_km!=null) add('Distance', `${f.distance_km} km — azimut ${f.bearing_deg}°`);
+
+  // Coordonnées
+  if(f.lat!=null) add('Position', `${f.lat.toFixed(5)}° N, ${f.lon.toFixed(5)}° E`);
+
+  // Altitude en mètres
+  if(f.altitude!=null) add('Altitude', `${ft2m(f.altitude)} m (${f.altitude} ft)`);
+
+  // Vitesse et cap
+  if(f.speed!=null&&f.speed>0){
+    add('Vitesse', `${kn2kmh(f.speed)} km/h (${f.speed} kn)`);
+    add('Cap', `${f.course}° — ${capStr(f.course||0)}`);
+  }
+
+  // Météo décodée
+  const wx=decodeWx(raw);
+  if(wx){
+    add('🌡 Température', `${wx.tempC} °C`);
+    add('💨 Vent', `${wx.windDirStr} (${wx.windDir}°) — ${wx.windSpd} km/h`);
+    if(wx.windGust>0) add('💨 Rafale', `${wx.windGust} km/h`);
+    add('💧 Humidité', `${wx.humidity} %`);
+    add('🌡 Pression', `${wx.pressure} hPa`);
+    if(parseFloat(wx.rain1h)>0) add('🌧 Pluie (1h)', `${wx.rain1h} mm`);
+    if(parseFloat(wx.rain24h)>0) add('🌧 Pluie (24h)', `${wx.rain24h} mm`);
+  }
+
+  // Télémétrie
+  if(/^T#/.test(f.comment||'')){
+    const vals=(f.comment||'').replace('T#','').split(',');
+    add('📊 Séquence', vals[0]);
+    vals.slice(1).forEach((v,i)=>add(`  Canal ${i+1}`, v));
+  }
+
+  // Commentaire
+  if(f.comment&&f.comment.trim()) add('Commentaire', f.comment);
+
+  // Symbole APRS
+  if(f.symbol) add('Symbole', f.symbol+' (table/code)');
+
+  return rows;
+}
+
 function frameMatchesFlt(f, search){
   if(activeFlt === 'rf' && !['rf','rf_digi','tx'].includes(f.origin)) return false;
   if(activeFlt === 'is' && f.origin !== 'is') return false;
@@ -628,7 +984,8 @@ function buildFrameEl(f){
   const hasPos = f.lat!=null && f.lon!=null;
   const item = document.createElement('div');
   item.className = `fi ${originClass(f)}`;
-  item.innerHTML = `<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${fmtT(f.timestamp)}</span></div><div><span class="fty ${tyC(f.data_type)}">${f.data_type||'?'}</span><span class="fcm">${f.comment||f.raw?.substring(0,55)||''}</span></div>${hasPos?`<div class="fco">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} — ${f.origin||'rf'}</div>`:`<div class="fco">${f.origin||'rf'}</div>`}`;
+    const summary=aprsShortSummary(f);
+  item.innerHTML = `<div class="fh"><span class="fc">${f.source||'?'}</span><span class="ftime">${fmtT(f.timestamp)}</span></div><div><span class="fty ${tyC(f.data_type)}">${f.data_type||'?'}</span><span class="fcm">${summary}</span></div>${hasPos?`<div class="fco">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)} — ${f.origin||'rf'}</div>`:`<div class="fco">${f.origin||'rf'}</div>`}`;
   item.onclick = () => showDet(f);
   if(hasPos) item.ondblclick = () => { map.setView([f.lat,f.lon],13); markers[f.source]?.openPopup(); };
   return item;
@@ -653,6 +1010,163 @@ function prependFrame(f){
 }
 
 // ── Markers / state ──────────────────────────────────────────────────────────
+
+// ── Tracks (polylines) ────────────────────────────────────────────────────────
+const TRACK_COLORS=['#00e5ff','#ff6b35','#00ff88','#ffcc00','#ff44aa','#a78bfa','#fb923c','#34d399','#f472b6','#60a5fa'];
+const trackPolylines={};
+let _trackColorIdx=0;
+const stationColors={};
+function stationColor(c){if(!stationColors[c]){stationColors[c]=TRACK_COLORS[_trackColorIdx++%TRACK_COLORS.length];}return stationColors[c];}
+
+function buildPopup(d){
+  const col=stationColor(d.source||'');
+  const tsStr=d.ts?new Date(d.ts).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'—';
+  const latStr=d.lat!=null?d.lat.toFixed(5):'—';
+  const lonStr=d.lon!=null?d.lon.toFixed(5):'—';
+  const spd=d.speed!=null?`<tr><td>Vitesse</td><td>${d.speed} km/h</td></tr>`:'';
+  const crs=d.course!=null?`<tr><td>Cap</td><td>${d.course}°</td></tr>`:'';
+  const alt=d.altitude!=null?`<tr><td>Altitude</td><td>${Math.round(d.altitude)} m</td></tr>`:'';
+  const pathStr=d.path||'—';
+  const originLbl={'rf':'RF direct','rf_digi':'RF via digi','is':'APRS-IS','igtx':'IS→RF','tx':'TX local'}[d.origin]||d.origin||'—';
+  const originCol={'rf':'#00ff88','rf_digi':'#ffcc00','is':'#00aaff','igtx':'#ff6b35','tx':'#ff44aa'}[d.origin]||'#aaa';
+  return `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:200px">
+    <div style="font-size:14px;font-weight:700;color:${col};margin-bottom:6px;border-bottom:1px solid #30363d;padding-bottom:4px">${d.source||'?'}</div>
+    <table style="width:100%;border-collapse:collapse;font-size:10px">
+      <tr><td style="color:#8b949e;padding:1px 4px 1px 0">Heure</td><td>${tsStr}</td></tr>
+      <tr><td style="color:#8b949e;padding:1px 4px 1px 0">Position</td><td>${latStr}, ${lonStr}</td></tr>
+      ${spd}${crs}${alt}
+      <tr><td style="color:#8b949e;padding:1px 4px 1px 0">Path</td><td style="word-break:break-all">${pathStr}</td></tr>
+      <tr><td style="color:#8b949e;padding:1px 4px 1px 0">Origine</td><td><span style="color:${originCol}">${originLbl}</span></td></tr>
+      ${d.comment?`<tr><td style="color:#8b949e;padding:1px 4px 1px 0">Info</td><td style="word-break:break-word">${d.comment}</td></tr>`:''}
+    </table>
+    ${trackPolylines[d.source]?`<div style="margin-top:6px;font-size:9px;color:#8b949e">${trackPolylines[d.source]._pts||0} point(s) de tracé</div>`:''}
+    ${(()=>{const fi=aprsfiCache[d.source];if(!fi)return '';const col=fi.age_s<300?'#00ff88':fi.age_s<3600?'#ffcc00':'#ff4466';return `<div style="margin-top:5px;padding:4px 6px;background:#0d1117;border-radius:4px;border-left:2px solid ${col};font-size:9px"><span style="color:#8b949e">APRS.fi : </span><span style="color:${col}">${fi.age_str} ago</span>${fi.path?` · <span style="color:#8b949e">${fi.path}</span>`:''}</div>`;})()}
+  </div>`;
+}
+
+function loadTracks(hours){
+  Object.values(trackPolylines).forEach(p=>{if(map.hasLayer(p))map.removeLayer(p);});
+  fetch('/api/tracks?hours='+(hours||6)).then(r=>r.json()).then(data=>{
+    Object.entries(data).forEach(([cs,pts])=>{
+      if(pts.length<2)return;
+      const col=stationColor(cs);
+      const latlngs=pts.map(p=>[p.lat,p.lon]);
+      const pl=L.polyline(latlngs,{color:col,weight:2,opacity:0.8,dashArray:null});
+      // Decorator: flèche sur le dernier segment
+      const last=latlngs[latlngs.length-1];
+      pl._pts=pts.length;
+      // Popup sur clic polyline
+      const lastPt=pts[pts.length-1];
+      pl.bindPopup(()=>buildPopup({source:cs,...lastPt}),{maxWidth:280});
+      trackPolylines[cs]=pl;
+      if(map.hasLayer(markers[cs])||true) pl.addTo(map);
+    });
+  });
+}
+
+// ── APRS.fi overlay & cache propagation ──────────────────────────────────────
+const aprsfiCache={};     // {callsign: {lat,lon,age_s,age_str,comment,path,...}}
+let aprsfiOverlayOn=false;
+const aprsfiMarkers={};   // marqueurs overlay translucides
+
+function _fmtAge(s){
+  if(s<60)return s+'s';
+  if(s<3600)return Math.floor(s/60)+'min '+( s%60)+'s';
+  if(s<86400)return Math.floor(s/3600)+'h '+(Math.floor(s%3600/60))+'min';
+  return Math.floor(s/86400)+'j '+Math.floor(s%86400/3600)+'h';
+}
+
+function fetchAprsfi(callsigns,cb){
+  const chunks=[];
+  for(let i=0;i<callsigns.length;i+=20)chunks.push(callsigns.slice(i,i+20));
+  let pending=chunks.length;
+  if(!pending){cb&&cb();return;}
+  chunks.forEach(chunk=>{
+    fetch('/api/aprsfi/batch?calls='+encodeURIComponent(chunk.join(',')))
+      .then(r=>r.json()).then(d=>{
+        if(d.ok&&d.stations)Object.assign(aprsfiCache,d.stations);
+        if(--pending===0)cb&&cb();
+      }).catch(()=>{if(--pending===0)cb&&cb();});
+  });
+}
+
+function _aprsfiIcon(cs){
+  const col=stationColor(cs);
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:10px;height:10px;border-radius:50%;background:${col};opacity:0.55;border:2px solid ${col};box-shadow:0 0 6px ${col}88"></div>`,
+    iconSize:[10,10],iconAnchor:[5,5],popupAnchor:[0,-8]
+  });
+}
+
+function showAprsfiOverlay(){
+  const calls=Object.keys(markers);
+  if(!calls.length)return;
+  fetchAprsfi(calls,()=>{
+    calls.forEach(cs=>{
+      const d=aprsfiCache[cs];
+      if(!d||d.lat==null||d.lon==null)return;
+      if(aprsfiMarkers[cs]){
+        aprsfiMarkers[cs].setLatLng([d.lat,d.lon]);
+        if(!map.hasLayer(aprsfiMarkers[cs]))aprsfiMarkers[cs].addTo(map);
+        return;
+      }
+      const m=L.marker([d.lat,d.lon],{icon:_aprsfiIcon(cs),zIndexOffset:-100});
+      m.bindPopup(()=>{
+        const col=stationColor(cs);
+        const localM=markers[cs];
+        const localD=localM?localM._aprsData:null;
+        const ageBadge=`<span style="color:${d.age_s<300?'#00ff88':d.age_s<3600?'#ffcc00':'#ff4466'}">${d.age_str} ago</span>`;
+        let diffRow='';
+        if(localD&&localD.lat!=null&&d.lat!=null){
+          const dlat=Math.abs(localD.lat-d.lat);
+          const dlon=Math.abs(localD.lon-d.lon);
+          if(dlat>0.001||dlon>0.001)
+            diffRow=`<tr><td style="color:#8b949e;padding:1px 4px 1px 0">Écart local</td><td style="color:#ffcc00">Δ${(dlat*111).toFixed(2)}km N/S, ${(dlon*111*Math.cos(d.lat*Math.PI/180)).toFixed(2)}km E/O</td></tr>`;
+        }
+        return `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;min-width:200px">
+          <div style="font-size:13px;font-weight:700;color:${col};margin-bottom:5px;border-bottom:1px solid #30363d;padding-bottom:3px">
+            ${cs} <span style="font-size:9px;opacity:.6">— APRS.fi</span>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:10px">
+            <tr><td style="color:#8b949e;padding:1px 4px 1px 0">Dernière trame</td><td>${ageBadge}</td></tr>
+            <tr><td style="color:#8b949e;padding:1px 4px 1px 0">Position</td><td>${d.lat.toFixed(5)}, ${d.lon.toFixed(5)}</td></tr>
+            ${d.speed!=null?`<tr><td style="color:#8b949e;padding:1px 4px 1px 0">Vitesse</td><td>${d.speed.toFixed(1)} km/h</td></tr>`:''}
+            <tr><td style="color:#8b949e;padding:1px 4px 1px 0">Path</td><td style="word-break:break-all">${d.path||'—'}</td></tr>
+            ${diffRow}
+            ${d.comment?`<tr><td style="color:#8b949e;padding:1px 4px 1px 0">Info</td><td style="word-break:break-word">${d.comment}</td></tr>`:''}
+          </table>
+        </div>`;
+      },{maxWidth:280});
+      aprsfiMarkers[cs]=m;
+      m.addTo(map);
+    });
+    document.getElementById('aprsfiBtn').classList.add('on');
+  });
+}
+
+function hideAprsfiOverlay(){
+  Object.values(aprsfiMarkers).forEach(m=>{if(map.hasLayer(m))map.removeLayer(m);});
+  document.getElementById('aprsfiBtn').classList.remove('on');
+}
+
+function toggleAprsfiOverlay(){
+  aprsfiOverlayOn=!aprsfiOverlayOn;
+  if(aprsfiOverlayOn)showAprsfiOverlay();
+  else hideAprsfiOverlay();
+}
+
+// Rafraîchir le cache APRS.fi en arrière-plan toutes les 5 min si overlay actif
+setInterval(()=>{
+  if(!aprsfiOverlayOn)return;
+  fetchAprsfi(Object.keys(markers),()=>{
+    Object.entries(aprsfiMarkers).forEach(([cs,m])=>{
+      const d=aprsfiCache[cs];
+      if(d&&d.lat!=null&&map.hasLayer(m))m.setLatLng([d.lat,d.lon]);
+    });
+  });
+},300000);
+
 const markers={},stationData={},seen=new Set(),markerOrigin={};
 const ORIGIN_COLOR={rf:'#00ff88',rf_digi:'#aaff00',tx:'#ff8800',igtx:'#ffaa00',is:'#00aaff'};
 function originColor(origin){return ORIGIN_COLOR[origin]||'#00ff88';}
@@ -733,10 +1247,16 @@ function updMk(f){
   const code=sym.length>=2?sym[1]:null;
   const org=f.origin||'rf';
   markerOrigin[c]=org;
-  if(markers[c]){markers[c].setLatLng([f.lat,f.lon]);markers[c].setIcon(mkIcon(c,true,table,code,org));}
+  if(markers[c]){
+    markers[c].setLatLng([f.lat,f.lon]);
+    markers[c].setIcon(mkIcon(c,true,table,code,org));
+    markers[c]._aprsData=Object.assign(markers[c]._aprsData||{},{source:c,lat:f.lat,lon:f.lon,comment:f.comment,origin:org,speed:f.speed,course:f.course,altitude:f.altitude,path:f.path,ts:f.timestamp});
+  }
   else{
     const m=L.marker([f.lat,f.lon],{icon:mkIcon(c,true,table,code,org)});
-    m.bindPopup(`<div class="pp-c">${c}</div><div class="pp-i">${f.lat.toFixed(4)}, ${f.lon.toFixed(4)}<br>${f.comment||''}<br><span style="color:${originColor(org)}">${org}</span></div>`,{maxWidth:240});
+    m._aprsData={source:c,lat:f.lat,lon:f.lon,comment:f.comment,origin:org,
+      speed:f.speed,course:f.course,altitude:f.altitude,path:f.path,ts:f.timestamp};
+    m.bindPopup(()=>buildPopup(m._aprsData),{maxWidth:280,className:'aprs-popup'});
     markers[c]=m;
     // respect current map filter
     const show=mapFlt==='all'||(mapFlt==='rf'&&['rf','rf_digi','tx'].includes(org))||(mapFlt==='is'&&org==='is')||(mapFlt==='igtx'&&org==='igtx');
@@ -771,7 +1291,8 @@ function showDet(f){
     symHtml=`<div style="width:24px;height:24px;background:url('${img}') -${col*24}px -${row*24}px;image-rendering:pixelated;flex-shrink:0"></div>`;
   }
   const distRow=f.distance_km!=null?`${f.distance_km} km / ${f.bearing_deg}°`:'-';
-  const rows=[['Source',f.source],['Destination',f.destination],['Path',f.path||'-'],['Type',f.data_type],['Origin',f.origin||'-'],['Distance/Az',distRow],['Lat',f.lat!=null?f.lat.toFixed(5):'-'],['Lon',f.lon!=null?f.lon.toFixed(5):'-'],['Symbole',f.symbol||'-'],['Vitesse',f.speed!=null?f.speed+' kn':'-'],['Cap',f.course!=null?f.course+'°':'-'],['Altitude',f.altitude!=null?f.altitude+' ft':'-'],['Commentaire',f.comment||'-']].map(([l,v])=>`<div class="dr"><span class="dlb">${l}</span><span class="dval">${v??'-'}</span></div>`).join('');
+    const detRows=aprsDetailRows(f);
+  const rows=detRows.map(({l,v})=>`<div class="dr"><span class="dlb">${l}</span><span class="dval">${v??'-'}</span></div>`).join('');
   panel.innerHTML=`<div class="dt" style="display:flex;align-items:center;gap:8px">${symHtml}<span>${f.source||'?'}</span></div>${rows}<div class="raw">${f.raw||''}</div>`;
   // Ouvrir popup sur la carte si la station a une position
   if(f.lat!=null&&f.lon!=null&&f.source&&markers[f.source]){
@@ -1090,6 +1611,48 @@ function termStop(){
 }
 function termClear(){if(term)term.clear();}
 
+// ── APRS-Lite TUI ─────────────────────────────────────────────────────────────
+let alTerm=null,alFit=null;
+function alStart(){
+  if(!SOCKETIO_ENABLED){alert('SocketIO requis');return;}
+  loadXterm().then(()=>{
+    const container=document.getElementById('al-container');
+    if(!alTerm){
+      alTerm=new Terminal({theme:{background:'#0a0e14',foreground:'#e8edf3',cursor:'#00ff88',selectionBackground:'#1a2230',black:'#0a0e14',red:'#ff4466',green:'#00ff88',yellow:'#ffaa00',blue:'#00aaff',magenta:'#c864ff',cyan:'#00ccff',white:'#e8edf3'},fontFamily:"'JetBrains Mono',monospace",fontSize:12,lineHeight:1.4,cursorBlink:true,scrollback:5000});
+      alFit=new FitAddon.FitAddon();
+      alTerm.loadAddon(alFit);
+      alTerm.open(container);
+      alFit.fit();
+      alTerm.onData(d=>sock.emit('al_input',{data:d}));
+      new ResizeObserver(()=>{if(alFit)alFit.fit();}).observe(container);
+    }
+    sock.emit('al_start',{});
+    document.getElementById('alStartBtn').style.display='none';
+    document.getElementById('alStopBtn').style.display='';
+    document.getElementById('alQuitBtn').style.display='';
+    document.getElementById('alStatus').textContent='APRS-Lite Lancé en TUI';
+    document.getElementById('alStatus').style.color='var(--g)';
+    alTerm.write('\r\n\x1b[32m[APRS-Lite TUI — '+CONFIG.callsign+']\x1b[0m\r\n\r\n');
+    setTimeout(()=>{if(alFit){alFit.fit();sock.emit('al_resize',{rows:alTerm.rows,cols:alTerm.cols});}},200);
+  });
+}
+function alQuit(){
+  // Envoie 'x' au TUI Textual — action_quit propre
+  sock.emit('al_input',{data:'x'});
+  document.getElementById('alStatus').textContent='Arrêt en cours…';
+  document.getElementById('alStatus').style.color='var(--y)';
+  document.getElementById('alQuitBtn').disabled=true;
+}
+function alStop(){
+  sock.emit('al_stop');
+  if(alTerm)alTerm.write('\r\n\x1b[31m[APRS-Lite arrêté]\x1b[0m\r\n');
+  document.getElementById('alStartBtn').style.display='';
+  document.getElementById('alStopBtn').style.display='none';
+  document.getElementById('alQuitBtn').style.display='none';
+  document.getElementById('alStatus').textContent='Inactif';
+  document.getElementById('alStatus').style.color='var(--t3)';
+}
+
 // ── Fetch helpers ────────────────────────────────────────────────────────────
 function loadFrames(){
   fetch('/api/frames?n=80').then(r=>r.json()).then(data=>{
@@ -1104,12 +1667,23 @@ function loadFrames(){
     renderStations();
   });
 }
+let tracksVisible=true;
 function loadPositions(){
   fetch('/api/positions').then(r=>r.json()).then(ps=>{ps.forEach(p=>updMk({source:p.callsign,lat:p.lat,lon:p.lon,symbol:p.symbol,comment:p.comment,altitude:p.altitude,origin:p.origin}));});
+  if(tracksVisible)loadTracks(6);
+  // Pre-charge APRS.fi en arriere-plan pour les popups
+  setTimeout(()=>fetchAprsfi(Object.keys(markers)),3000);
+}
+function toggleTracks(){
+  tracksVisible=!tracksVisible;
+  const btn=document.getElementById('trackBtn');
+  if(tracksVisible){loadTracks(6);btn.classList.add('on');btn.title='Masquer les tracés';}
+  else{Object.values(trackPolylines).forEach(p=>map.removeLayer(p));btn.classList.remove('on');btn.title='Afficher les tracés';}
 }
 function pollStats(){fetch('/api/stats').then(r=>r.json()).then(updateStats).catch(()=>{});}
 // ── Config (form) ─────────────────────────────────────────────────────────────
 const CFG_KEYS=['CALLSIGN','PASSCODE','LAT','LON','COMMENT','IGSERVER','IGFILTER_KM','TXDELAY','ADEVICE','PTT','REBOOT_DAY','REBOOT_HOUR'];
+loadBeaconConfig();
 function loadConfigRaw(){
   fetch('/api/system/config').then(r=>r.json()).then(d=>{
     const m={CALLSIGN:d.callsign,LAT:d.lat,LON:d.lon,COMMENT:d.comment};
@@ -1167,6 +1741,94 @@ function wifiScan(){
     ).join('');
   }).catch(e=>{btn.disabled=false;btn.textContent='🔍 Scanner';showMsg('wifiMsg','Erreur: '+e,false);});
 }
+function changeDashPwd(){
+  const old=document.getElementById('pwdOld').value;
+  const n1=document.getElementById('pwdNew').value;
+  const n2=document.getElementById('pwdNew2').value;
+  const el=document.getElementById('dashPwdMsg');
+  if(!old||!n1){el.textContent='Remplir tous les champs.';el.style.display='block';el.style.background='#ff446622';el.style.color='var(--rd)';return;}
+  if(n1!==n2){el.textContent='Les mots de passe ne correspondent pas.';el.style.display='block';el.style.background='#ff446622';el.style.color='var(--rd)';return;}
+  fetch('/api/auth/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_password:old,new_password:n1})})
+    .then(r=>r.json()).then(d=>{
+      el.style.display='block';
+      if(d.ok){el.textContent='Mot de passe dashboard change.';el.style.background='#00ff8822';el.style.color='var(--g)';['pwdOld','pwdNew','pwdNew2'].forEach(i=>document.getElementById(i).value='');}
+      else{el.textContent=d.error||'Erreur.';el.style.background='#ff446622';el.style.color='var(--rd)';}
+    }).catch(()=>{el.textContent='Erreur reseau.';el.style.display='block';});
+}
+function changePiPwd(){
+  const old=document.getElementById('piPwdOld').value;
+  const n1=document.getElementById('piPwdNew').value;
+  const n2=document.getElementById('piPwdNew2').value;
+  const el=document.getElementById('piPwdMsg');
+  if(!old||!n1){el.textContent='Remplir tous les champs.';el.style.display='block';el.style.background='#ff446622';el.style.color='var(--rd)';return;}
+  if(n1!==n2){el.textContent='Les mots de passe ne correspondent pas.';el.style.display='block';el.style.background='#ff446622';el.style.color='var(--rd)';return;}
+  fetch('/api/system/passwd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_password:old,new_password:n1})})
+    .then(r=>r.json()).then(d=>{
+      el.style.display='block';
+      if(d.ok){el.textContent='Mot de passe Pi change.';el.style.background='#00ff8822';el.style.color='var(--g)';['piPwdOld','piPwdNew','piPwdNew2'].forEach(i=>document.getElementById(i).value='');}
+      else{el.textContent=d.error||'Erreur.';el.style.background='#ff446622';el.style.color='var(--rd)';}
+    }).catch(()=>{el.textContent='Erreur reseau.';el.style.display='block';});
+}
+function usbRefreshStatus(){
+  fetch('/api/usb/status').then(r=>r.json()).then(d=>{
+    const dot=document.getElementById('usbDot');
+    const txt=document.getElementById('usbStatusTxt');
+    const free=document.getElementById('usbFreeTxt');
+    const last=document.getElementById('usbLastBackup');
+    if(d.mounted){
+      dot.style.background='var(--g)';
+      txt.textContent='Montée sur /mnt/usbkey';
+      free.textContent=d.free?'Espace libre : '+d.free:'';
+      if(last)last.textContent=d.last_backup||'—';
+    } else {
+      dot.style.background='var(--rd)';
+      txt.textContent='Non montée';
+      free.textContent='';
+    }
+    usbRefreshList();
+  }).catch(()=>{});
+}
+function usbRefreshList(){
+  fetch('/api/usb/backups').then(r=>r.json()).then(d=>{
+    const el=document.getElementById('usbBackupList');
+    if(!d.ok||!d.backups||!d.backups.length){el.textContent='Aucune sauvegarde';return;}
+    const fmtBackupName=n=>{const m=n.match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);if(!m)return n;return m[3]+'/'+m[2]+'/'+m[1]+' '+m[4]+':'+m[5];};
+    el.innerHTML=d.backups.map(b=>'<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--bd)"><span title="'+b.name+'">'+fmtBackupName(b.name)+'</span><span style="color:var(--t3)">'+b.size_mb+' Mo</span></div>').join('');
+  }).catch(()=>{});
+}
+function usbMount(){
+  fetch('/api/usb/mount',{method:'POST'}).then(r=>r.json()).then(d=>{
+    const el=document.getElementById('usbMountMsg');
+    el.style.display='block';
+    el.style.background=d.ok?'#00ff8822':'#ff446622';
+    el.style.color=d.ok?'var(--g)':'var(--rd)';
+    el.textContent=d.msg||d.error;
+    setTimeout(usbRefreshStatus,1000);
+  });
+}
+function usbEject(){
+  fetch('/api/usb/eject',{method:'POST'}).then(r=>r.json()).then(d=>{
+    const el=document.getElementById('usbMountMsg');
+    el.style.display='block';
+    el.style.background=d.ok?'#00ff8822':'#ff446622';
+    el.style.color=d.ok?'var(--g)':'var(--rd)';
+    el.textContent=d.msg||d.error;
+    setTimeout(usbRefreshStatus,1000);
+  });
+}
+function usbBackup(){
+  const btn=event.target;
+  btn.disabled=true;btn.textContent='⏳ Sauvegarde en cours…';
+  const el=document.getElementById('usbBackupMsg');
+  el.style.display='block';el.textContent='En cours…';el.style.background='var(--b0)';el.style.color='var(--t2)';
+  fetch('/api/usb/backup',{method:'POST'}).then(r=>r.json()).then(d=>{
+    btn.disabled=false;btn.textContent='▶ Lancer sauvegarde maintenant';
+    el.style.background=d.ok?'#00ff8822':'#ff446622';
+    el.style.color=d.ok?'var(--g)':'var(--rd)';
+    el.textContent=d.output||d.error||'OK';
+    usbRefreshStatus();
+  }).catch(e=>{btn.disabled=false;btn.textContent='▶ Lancer sauvegarde maintenant';el.textContent='Erreur réseau';el.style.color='var(--rd)';});
+}
 function wifiConnect(){
   const ssid=document.getElementById('wifiSsid').value.trim();
   const pwd=document.getElementById('wifiPwd').value;
@@ -1200,21 +1862,164 @@ function clockSet(){
     .catch(e=>showMsg('clockMsg','Erreur: '+e,false));
 }
 
+// ── BME wiring diagram ────────────────────────────────────────────────────────
+function bmeWiring(){
+  return `<div style="margin-top:8px">
+  <div style="font-size:10px;color:var(--t2);font-weight:600;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Câblage BME280 / BME68x → Raspberry Pi (I²C)</div>
+  <svg viewBox="0 0 340 180" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:360px;display:block">
+    <!-- Pi header block -->
+    <rect x="10" y="20" width="70" height="140" rx="4" fill="#1a2a1a" stroke="#334" stroke-width="1.5"/>
+    <text x="45" y="14" text-anchor="middle" font-size="8" fill="#aaa" font-family="monospace">GPIO</text>
+
+    <!-- Pin rows: left col odd, right col even -->
+    <!-- Pin 1: 3.3V -->
+    <rect x="16" y="28" width="14" height="10" rx="2" fill="#cc2200"/>
+    <text x="34" y="36" font-size="7" fill="#ff6655" font-family="monospace">1 3.3V</text>
+    <!-- Pin 2: 5V (unused, faded) -->
+    <rect x="55" y="28" width="14" height="10" rx="2" fill="#333"/>
+    <text x="54" y="36" font-size="7" fill="#555" font-family="monospace" text-anchor="end">5V 2</text>
+
+    <!-- Pin 3: SDA -->
+    <rect x="16" y="44" width="14" height="10" rx="2" fill="#005fa0"/>
+    <text x="34" y="52" font-size="7" fill="#4ab0ff" font-family="monospace">3 SDA</text>
+    <!-- Pin 4: 5V (unused) -->
+    <rect x="55" y="44" width="14" height="10" rx="2" fill="#333"/>
+    <text x="54" y="52" font-size="7" fill="#555" font-family="monospace" text-anchor="end">5V 4</text>
+
+    <!-- Pin 5: SCL -->
+    <rect x="16" y="60" width="14" height="10" rx="2" fill="#806000"/>
+    <text x="34" y="68" font-size="7" fill="#ffd040" font-family="monospace">5 SCL</text>
+    <!-- Pin 6: GND -->
+    <rect x="55" y="60" width="14" height="10" rx="2" fill="#222"/>
+    <text x="54" y="68" font-size="7" fill="#aaa" font-family="monospace" text-anchor="end">GND 6</text>
+
+    <!-- remaining pins faded -->
+    <rect x="16" y="76" width="14" height="10" rx="2" fill="#1e1e1e"/> <rect x="55" y="76" width="14" height="10" rx="2" fill="#1e1e1e"/>
+    <rect x="16" y="92" width="14" height="10" rx="2" fill="#1e1e1e"/> <rect x="55" y="92" width="14" height="10" rx="2" fill="#1e1e1e"/>
+    <rect x="16" y="108" width="14" height="10" rx="2" fill="#1e1e1e"/> <rect x="55" y="108" width="14" height="10" rx="2" fill="#1e1e1e"/>
+    <rect x="16" y="124" width="14" height="10" rx="2" fill="#1e1e1e"/> <rect x="55" y="124" width="14" height="10" rx="2" fill="#1e1e1e"/>
+    <rect x="16" y="140" width="14" height="10" rx="2" fill="#1e1e1e"/> <rect x="55" y="140" width="14" height="10" rx="2" fill="#1e1e1e"/>
+    <text x="45" y="166" text-anchor="middle" font-size="7" fill="#444" font-family="monospace">· · ·</text>
+
+    <!-- BME module -->
+    <rect x="230" y="50" width="90" height="80" rx="5" fill="#0d1f0d" stroke="#2a4a2a" stroke-width="1.5"/>
+    <text x="275" y="65" text-anchor="middle" font-size="9" fill="#00ff88" font-family="monospace" font-weight="bold">BME280</text>
+    <text x="275" y="75" text-anchor="middle" font-size="7" fill="#556" font-family="monospace">/ BME68x</text>
+
+    <!-- BME pins -->
+    <line x1="230" y1="88" x2="220" y2="88" stroke="#cc2200" stroke-width="2"/>
+    <text x="228" y="92" text-anchor="end" font-size="7.5" fill="#ff6655" font-family="monospace">VCC</text>
+    <line x1="230" y1="100" x2="220" y2="100" stroke="#444" stroke-width="2"/>
+    <text x="228" y="104" text-anchor="end" font-size="7.5" fill="#aaa" font-family="monospace">GND</text>
+    <line x1="230" y1="112" x2="220" y2="112" stroke="#005fa0" stroke-width="2"/>
+    <text x="228" y="116" text-anchor="end" font-size="7.5" fill="#4ab0ff" font-family="monospace">SDA</text>
+    <line x1="230" y1="124" x2="220" y2="124" stroke="#806000" stroke-width="2"/>
+    <text x="228" y="128" text-anchor="end" font-size="7.5" fill="#ffd040" font-family="monospace">SCL</text>
+
+    <!-- Wires: routed via middle channel -->
+    <!-- VCC: Pin1 left → right side → BME VCC -->
+    <polyline points="16,33 8,33 8,88 220,88" fill="none" stroke="#cc2200" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- GND: Pin6 right → BME GND -->
+    <polyline points="69,65 200,65 200,100 220,100" fill="none" stroke="#666" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- SDA: Pin3 left → BME SDA -->
+    <polyline points="16,49 5,49 5,112 220,112" fill="none" stroke="#005fa0" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- SCL: Pin5 left → BME SCL -->
+    <polyline points="16,65 12,65 12,124 220,124" fill="none" stroke="#806000" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Legend -->
+    <rect x="10" y="158" width="8" height="8" rx="1" fill="#cc2200"/>
+    <text x="22" y="165" font-size="7.5" fill="#ff6655" font-family="monospace">3.3V / VCC</text>
+    <rect x="90" y="158" width="8" height="8" rx="1" fill="#444"/>
+    <text x="102" y="165" font-size="7.5" fill="#aaa" font-family="monospace">GND</text>
+    <rect x="140" y="158" width="8" height="8" rx="1" fill="#005fa0"/>
+    <text x="152" y="165" font-size="7.5" fill="#4ab0ff" font-family="monospace">SDA (GPIO2)</text>
+    <rect x="240" y="158" width="8" height="8" rx="1" fill="#806000"/>
+    <text x="252" y="165" font-size="7.5" fill="#ffd040" font-family="monospace">SCL (GPIO3)</text>
+
+    <!-- i2c enable hint -->
+    <text x="170" y="178" text-anchor="middle" font-size="7" fill="#556" font-family="monospace">sudo raspi-config → Interface Options → I2C → Enable</text>
+  </svg>
+  </div>`;
+}
+
 // ── Météo / capteur ───────────────────────────────────────────────────────────
 let sensorInterval=null;
+function _wmoCap(code){
+  if(code<=1)return'☀️';if(code<=3)return'🌤️';if(code<=9)return'🌫️';
+  if(code<=29)return'🌦️';if(code<=49)return'🌫️';if(code<=59)return'🌧️';
+  if(code<=79)return'❄️';if(code<=84)return'🌧️';
+  return'⛈️';
+}
+function _renderOpenMeteo(el){
+  el.innerHTML='<div style="color:var(--t3);font-size:9px;margin-bottom:4px">⏳ Chargement données Open-Meteo…</div>';
+  fetch('/api/openmeteo').then(r=>r.json()).then(d=>{
+    if(!d||!d.ok){
+      el.innerHTML='<div style="color:var(--t3);font-size:11px">— non connecté</div><div style="color:var(--t3);font-size:9px;margin-top:4px">📡 Open-Meteo indisponible</div>';
+      return;
+    }
+    const capStr=deg=>{const dirs=['N','NE','E','SE','S','SO','O','NO'];return dirs[Math.round(deg/45)%8];};
+    const _lbl='<div style="display:flex;gap:6px;margin-bottom:2px">'
+      +'<div style="flex:1;font-size:8px;color:var(--t3);text-align:center">Température</div>'
+      +'<div style="flex:1;font-size:8px;color:var(--t3);text-align:center">Humidité Relative</div>'
+      +'<div style="flex:1;font-size:8px;color:var(--t3);text-align:center">Pression Atmosphérique</div>'
+      +'</div>';
+    el.innerHTML=_lbl
+      +'<div style="display:flex;gap:6px">'
+      +'<div class="sx-val" style="flex:1"><div class="sx-num">'+d.temperature+'</div><div class="sx-unit">°C</div></div>'
+      +'<div class="sx-val" style="flex:1"><div class="sx-num">'+d.humidity+'</div><div class="sx-unit">% HR</div></div>'
+      +'<div class="sx-val" style="flex:1"><div class="sx-num" style="font-size:15px">'+d.pressure+'</div><div class="sx-unit">hPa</div></div>'
+      +'</div>'
+      +'<div style="font-size:9px;color:var(--t3);margin-top:5px;display:flex;justify-content:space-between">'
+      +(()=>{
+      const isSnowOM=(d.weather_code>=71&&d.weather_code<=77)||(d.weather_code>=85&&d.weather_code<=86);
+      const pval=isSnowOM?(d.snow_1h||0)+' cm neige':(d.precipitation||d.rain_1h||0)+' mm pluie';
+      return '<span>'+_wmoCap(d.weather_code||0)+' Vent '+d.wind_speed+' km/h '+capStr(d.wind_dir||0)+'  '+(isSnowOM?'❄️':'💧')+pval+'</span>';
+    })()
+      +'<span style="color:var(--am)">📡 Open-Meteo · '+((d.time||'')).slice(11,16)+'</span>'
+      +'</div>';
+  }).catch(()=>{
+    el.innerHTML='<div style="color:var(--t3);font-size:11px">— non connecté</div>';
+  });
+}
+function _renderSensor(d,elId){
+  const el=document.getElementById(elId);if(!el)return;
+  if(!d||!d.ok){
+    if(elId==='sensorData'){_renderOpenMeteo(el);return;}
+    const err=(d&&d.error)||'Non connecté';
+    const isI2C=/i2c|No such file|Errno 2/i.test(err);
+    el.innerHTML='<div style="color:var(--t3);font-size:11px">'+(isI2C?'⚠ '+err:'— non connecté')+'</div>'+(isI2C?bmeWiring():'');
+    return;
+  }
+  const capStr=deg=>{const dirs=['N','NE','E','SE','S','SO','O','NO'];return dirs[Math.round(deg/45)%8];};
+  const iaq=d.iaq!=null&&d.iaq>=0?
+    '<div class="sx-val" style="flex:1"><div class="sx-num" style="color:'+(d.iaq<50?'var(--g)':d.iaq<100?'#aaff00':d.iaq<150?'var(--am)':'var(--rd)')+';font-size:13px">'+d.iaq.toFixed(0)+'</div><div class="sx-unit">IAQ</div></div>':'';
+  const hasWind=d.wind_speed!=null;
+  const hasRain=d.rain_1h!=null;
+  const isSnow=(d.weather_code>=71&&d.weather_code<=77)||(d.weather_code>=85&&d.weather_code<=86);
+  const hasSnow=d.snow_1h!=null&&d.snow_1h>0;
+  const showPrecip=hasRain||hasSnow;
+  const wLabel=hasWind?'<div style="flex:1;font-size:8px;color:var(--t3);text-align:center">💨 Vent</div>':'';
+  const rLabel=showPrecip?'<div style="flex:1;font-size:8px;color:var(--t3);text-align:center">'+(isSnow||hasSnow?'❄️ Neige 1h':'💧 Pluie 1h')+'</div>':'';
+  const _lbl='<div style="display:flex;gap:6px;margin-bottom:2px">'
+    +'<div style="flex:1;font-size:8px;color:var(--t3);text-align:center">Température</div>'
+    +'<div style="flex:1;font-size:8px;color:var(--t3);text-align:center">Humidité Relative</div>'
+    +'<div style="flex:1;font-size:8px;color:var(--t3);text-align:center">Pression Atmosphérique</div>'
+    +wLabel+rLabel+'</div>';
+  const wVal=hasWind?'<div class="sx-val" style="flex:1"><div class="sx-num" style="font-size:13px">'+d.wind_speed+'</div><div class="sx-unit">km/h'+(d.wind_dir!=null?' '+capStr(d.wind_dir):'')+'</div></div>':'';
+  const precipVal=isSnow||hasSnow?(d.snow_1h||0)+' cm':(d.rain_1h||0)+' mm';
+  const rVal=showPrecip?'<div class="sx-val" style="flex:1"><div class="sx-num" style="font-size:13px">'+precipVal+'</div><div class="sx-unit">/1h</div></div>':'';
+  const srcBadge=d.source==='open-meteo'?'<span style="color:var(--am)">📡 Open-Meteo</span>':(d.chip||'');
+  el.innerHTML=_lbl+'<div style="display:flex;gap:6px">'
+    +'<div class="sx-val" style="flex:1"><div class="sx-num">'+d.temperature+'</div><div class="sx-unit">°C</div></div>'
+    +'<div class="sx-val" style="flex:1"><div class="sx-num">'+d.humidity+'</div><div class="sx-unit">% HR</div></div>'
+    +'<div class="sx-val" style="flex:1"><div class="sx-num" style="font-size:15px">'+d.pressure+'</div><div class="sx-unit">hPa</div></div>'
+    +iaq+wVal+rVal+'</div>'
+    +'<div style="font-size:9px;color:var(--t3);margin-top:4px;text-align:right">'+srcBadge+'</div>';
+}
 function loadSensor(){
   fetch('/api/sensor').then(r=>r.json()).then(d=>{
-    const el=document.getElementById('sensorData');
-    if(!el)return;
-    if(!d.ok){el.innerHTML=`<span style="color:var(--rd)">${d.error||'Capteur indisponible'}</span>`;return;}
-    const iaq=d.iaq!=null&&d.iaq>=0?`<div class="sx-val"><div class="sx-num" style="color:${d.iaq<50?'var(--g)':d.iaq<100?'#aaff00':d.iaq<150?'var(--am)':'var(--rd)'}">${d.iaq.toFixed(0)}</div><div class="sx-unit">IAQ${d.iaq_accuracy!=null?' acc='+d.iaq_accuracy:''}</div></div>`:'';
-    const co2=d.co2_eq>0?`<div class="sx-val"><div class="sx-num" style="font-size:15px">${d.co2_eq.toFixed(0)}</div><div class="sx-unit">CO₂ ppm</div></div>`:'';
-    el.innerHTML=`<div class="sx-grid">
-      <div class="sx-val"><div class="sx-num">${d.temperature}</div><div class="sx-unit">°C</div></div>
-      <div class="sx-val"><div class="sx-num">${d.humidity}</div><div class="sx-unit">% HR</div></div>
-      <div class="sx-val"><div class="sx-num" style="font-size:15px">${d.pressure}</div><div class="sx-unit">hPa</div></div>
-      ${iaq}${co2}
-    </div><div style="font-size:9px;color:var(--t3);margin-top:6px;text-align:right">${d.chip||''}</div>`;
+    _renderSensor(d.outdoor||d,'sensorData');
+    // _renderSensor(d.box,'sensorDataBox'); // second capteur désactivé
   }).catch(()=>{});
 }
 function loadMeteo(){
@@ -1417,6 +2222,121 @@ function renderAnalyseTable(){
 }
 
 // ── Actions Principal ─────────────────────────────────────────────────────────
+
+
+// ── RF Coverage ───────────────────────────────────────────────────────────────
+let coverageLayer = null;
+let coverageVisible = false;
+let coverageReady = false;
+let coverageBounds = null;
+
+function toggleCoverage(){
+  const btn = document.getElementById('coverageBtn');
+  if(coverageVisible){
+    if(coverageLayer){ map.removeLayer(coverageLayer); }
+    coverageVisible = false;
+    btn.classList.remove('on');
+    btn.title = 'Couverture RF (terrain + LOS)';
+    const lc=document.getElementById('legendCoverage'); if(lc)lc.style.display='none';
+    return;
+  }
+  if(coverageReady && coverageBounds){
+    _showCoverageLayer();
+    return;
+  }
+  showActionMsg('Vérification couverture RF…', true);
+  fetch('/api/coverage/status').then(r=>r.json()).then(d=>{
+    if(d.status==='ready' && d.image_url){
+      coverageBounds = d.bounds;
+      coverageReady = true;
+      _showCoverageLayer();
+    } else if(d.status==='running'){
+      showActionMsg('Génération en cours, patientez…', true);
+      _pollCoverage();
+    } else {
+      showActionMsg('Génération couverture RF… (1-3 min)', true);
+      fetch('/api/coverage/generate',{method:'POST'}).then(()=>_pollCoverage());
+    }
+  }).catch(()=>showActionMsg('Erreur API coverage',false));
+}
+
+function _showCoverageLayer(){
+  const btn = document.getElementById('coverageBtn');
+  const ts = Date.now();
+  coverageLayer = L.imageOverlay(
+    '/api/coverage/image?t='+ts,
+    [[coverageBounds[0], coverageBounds[1]], [coverageBounds[2], coverageBounds[3]]],
+    {opacity:0.6, interactive:false}
+  ).addTo(map);
+  coverageVisible = true;
+  btn.classList.add('on');
+  btn.title = 'Masquer couverture RF';
+  showActionMsg('Couverture RF affichée', true);
+}
+
+let _coveragePollTimer = null;
+function _pollCoverage(){
+  if(_coveragePollTimer) clearTimeout(_coveragePollTimer);
+  _coveragePollTimer = setTimeout(()=>{
+    fetch('/api/coverage/status').then(r=>r.json()).then(d=>{
+      if(d.status==='ready' && d.image_url){
+        coverageBounds = d.bounds;
+        coverageReady = true;
+        _showCoverageLayer();
+      } else if(d.status==='running'){
+        _pollCoverage();
+      } else if(d.status==='error'){
+        showActionMsg('Erreur: '+(d.error||'génération échouée'), false);
+      } else {
+        _pollCoverage();
+      }
+    }).catch(()=>_pollCoverage());
+  }, 5000);
+}
+
+
+// ── Beacon automatique ────────────────────────────────────────────────────────
+function sendBeaconAuto(){
+  fetch('/api/beacon/auto',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(d.ok){
+      const types=(d.results||[]).map(r=>r.type==='position'?'Position':'Meteo').join('+');
+      const pkt=(d.results||[]).map(r=>r.packet||'').filter(Boolean).join(' | ');
+      showActionMsg(types+': '+pkt, true);
+    }else{
+      const errs=(d.results||[]).map(r=>r.error||'').filter(Boolean).join(' / ');
+      showActionMsg('Erreur: '+errs, false);
+    }
+  }).catch(()=>showActionMsg('Erreur reseau',false));
+}
+
+function loadBeaconConfig(){
+  fetch('/api/beacon/config').then(r=>r.json()).then(d=>{
+    if(!d.ok)return;
+    const sel=document.getElementById('cfg_beacon_type');
+    const inp=document.getElementById('cfg_beacon_interval');
+    if(sel)sel.value=d.beacon_type||'position';
+    if(inp)inp.value=d.beacon_interval_min||0;
+  }).catch(()=>{});
+}
+
+function saveBeaconConfig(){
+  const btype=document.getElementById('cfg_beacon_type')?.value||'position';
+  const interval=parseInt(document.getElementById('cfg_beacon_interval')?.value||'0');
+  const el=document.getElementById('beaconCfgMsg');
+  fetch('/api/beacon/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({beacon_type:btype,beacon_interval_min:interval})})
+  .then(r=>r.json()).then(d=>{
+    el.style.display='block';
+    if(d.ok){
+      const lbl={position:'Position APRS',weather:'Meteo APRS',both:'Position + Meteo'}[btype]||btype;
+      el.textContent=interval>0?(lbl+' toutes les '+interval+' min'):(lbl+' — envoi manuel uniquement');
+      el.style.background='#00ff8822';el.style.color='var(--g)';
+    }else{
+      el.textContent=d.error||'Erreur';el.style.background='#ff446622';el.style.color='var(--rd)';
+    }
+  }).catch(()=>{el.textContent='Erreur reseau';el.style.display='block';});
+}
+
 function sendBeacon(){
   fetch('/api/beacon/send',{method:'POST'}).then(r=>r.json())
     .then(d=>showActionMsg(d.ok?('Beacon: '+d.packet):('Erreur: '+d.error),d.ok))
@@ -1455,6 +2375,8 @@ function initCharts(){
   _charts.ram =_mkChart('chRam','RAM', cs.getPropertyValue('--bl').trim()||'#00aaff');
   _charts.cpu =_mkChart('chCpu','CPU', cs.getPropertyValue('--am').trim()||'#ffaa00');
   _charts.disk=_mkChart('chDisk','Disk',cs.getPropertyValue('--g').trim()||'#00ff88');
+  _charts.load=_mkChart('chLoad','Load','#aa66ff');
+  _charts.dw  =_mkChart('chDirewolf','DW','#00ffcc');
 }
 function loadTelemetryCharts(){
   initCharts();
@@ -1466,7 +2388,56 @@ function loadTelemetryCharts(){
     fill(_charts.ram,'ram_usage');
     fill(_charts.cpu,'cpu_usage');
     fill(_charts.disk,'disk_usage');
+    fill(_charts.load,'load_avg_1m');
+    if(_charts.dw){_charts.dw.data.labels=labels;_charts.dw.data.datasets[0].data=rows.map(r=>r.direwolf_status==='active'?1:0);_charts.dw.update('none');}
   }).catch(()=>{});
+}
+let _bmeRange=24;
+let _bmeCharts={};
+function initBmeCharts(){
+  const cs=getComputedStyle(document.documentElement);
+  if(!_bmeCharts.temp)_bmeCharts.temp=_mkChart('chBmeTemp','Temp',cs.getPropertyValue('--rd').trim()||'#ff4466');
+  if(!_bmeCharts.hum)_bmeCharts.hum=_mkChart('chBmeHum','Hum',cs.getPropertyValue('--bl').trim()||'#00aaff');
+  if(!_bmeCharts.pres)_bmeCharts.pres=_mkChart('chBmePres','Pres',cs.getPropertyValue('--g').trim()||'#00ff88');
+  if(!_bmeCharts.wind)_bmeCharts.wind=_mkChart('chBmeWind','Vent',cs.getPropertyValue('--am').trim()||'#ffaa00');
+  if(!_bmeCharts.rain)_bmeCharts.rain=_mkChart('chBmeRain','Pluie','#44aaff');
+}
+function loadBmeCharts(hours){
+  initBmeCharts();
+  fetch('/api/telemetry?hours='+hours+'&bme=1').then(r=>r.json()).then(rows=>{
+    const allKeys=['temp','hum','pres','wind','rain'];
+    if(!rows||!rows.length){
+      allKeys.forEach(k=>{if(_bmeCharts[k]){_bmeCharts[k].data.labels=[];_bmeCharts[k].data.datasets[0].data=[];_bmeCharts[k].update('none');}});
+      return;
+    }
+    const isOm=rows.some(r=>r.weather_source==='open-meteo'||r.weather_source==='hybrid');
+    const titleEl=document.getElementById('bmeHistoTitle');
+    if(titleEl)titleEl.textContent=isOm?'Historique Open-Meteo 📡':'Historique BME280';
+    const hasWind=rows.some(r=>r.wind_speed!=null);
+    const hasRain=rows.some(r=>r.rain_1h!=null);
+    const windBlk=document.getElementById('bmeWindBlock');
+    const rainBlk=document.getElementById('bmeRainBlock');
+    if(windBlk)windBlk.style.display=hasWind?'':'';
+    if(rainBlk)rainBlk.style.display=hasRain?'':'';
+    const fmt=hours<=48?{hour:'2-digit',minute:'2-digit'}:{month:'2-digit',day:'2-digit',hour:'2-digit'};
+    const labels=rows.map(r=>new Date(r.timestamp).toLocaleString('fr-FR',fmt));
+    function fill(ch,key){if(!ch)return;ch.data.labels=labels;ch.data.datasets[0].data=rows.map(r=>r[key]??null);ch.update('none');}
+    fill(_bmeCharts.temp,'bme_temp');
+    fill(_bmeCharts.hum,'bme_humidity');
+    fill(_bmeCharts.pres,'bme_pressure');
+    fill(_bmeCharts.wind,'wind_speed');
+    fill(_bmeCharts.rain,'rain_1h');
+  }).catch(()=>{});
+}
+function setBmeRange(h){
+  _bmeRange=h;
+  document.querySelectorAll('.bme-range-btn').forEach(b=>{
+    const active=parseInt(b.dataset.h)===h;
+    b.style.background=active?'var(--bl)':'var(--b3)';
+    b.style.color=active?'#fff':'var(--t2)';
+    b.style.border=active?'none':'1px solid var(--bd)';
+  });
+  loadBmeCharts(h);
 }
 function updateChartsLive(telem){
   if(!_charts.temp)return;
@@ -1501,10 +2472,11 @@ document.querySelectorAll('.tab').forEach(btn=>{btn.onclick=()=>{
     if(activeAv==='stats')loadAnalyse();
     else if(activeAv==='historique')loadLogDates();
   }
-  if(btn.dataset.t==='meteo')loadMeteo();
-  else{if(sensorInterval){clearInterval(sensorInterval);sensorInterval=null;}}
+  if(btn.dataset.t==='meteo'){loadMeteo();loadBmeCharts(_bmeRange);} if(btn.dataset.t==='usb')usbRefreshStatus();
+  else{if(sensorInterval){clearInterval(sensorInterval);sensorInterval=null;} if(btn.dataset.t==='systeme')loadSensor();}
   if(btn.dataset.t==='systeme')loadSysteme();
   if(btn.dataset.t==='terminal')setTimeout(()=>{if(termFit){termFit.fit();sock.emit('terminal_resize',{rows:term.rows,cols:term.cols});}},100);
+  if(btn.dataset.t==='aprslite')setTimeout(()=>{if(alFit){alFit.fit();sock.emit('al_resize',{rows:alTerm.rows,cols:alTerm.cols});}},100);
   if(btn.dataset.t==='principal'){const activeP=document.querySelector('.ptab.on');if(activeP?.dataset.p==='monitor')monitorStart();}
 };});
 
@@ -1518,6 +2490,7 @@ document.querySelectorAll('.ptab:not(.antab)').forEach(btn=>{btn.onclick=()=>{
   const gs=document.getElementById('globalSearch');if(gs)gs.value='';
   if(btn.dataset.p==='stations')renderStations();
   if(btn.dataset.p==='monitor')monitorStart();
+  if(btn.dataset.p==='messages')loadMsgs();
   if(btn.dataset.p!=='monitor')monitorStop();
 };});
 
@@ -1541,6 +2514,16 @@ if(SOCKETIO_ENABLED){
   sock.on('telemetry',t=>{pollStats();if(t)updateChartsLive(t);});
   // Terminal
   sock.on('terminal_output',d=>{if(term)term.write(d.data);});
+  sock.on('al_output',d=>{if(alTerm)alTerm.write(d.data);});
+  sock.on('al_exit',()=>{
+    if(alTerm)alTerm.write('\r\n\x1b[31m[APRS-Lite terminé]\x1b[0m\r\n');
+    document.getElementById('alStartBtn').style.display='';
+    document.getElementById('alStopBtn').style.display='none';
+    document.getElementById('alQuitBtn').style.display='none';
+    document.getElementById('alQuitBtn').disabled=false;
+    document.getElementById('alStatus').textContent='Terminé';
+    document.getElementById('alStatus').style.color='var(--t3)';
+  });
   sock.on('terminal_exit',()=>{
     if(term)term.write('\r\n\x1b[31m[Processus terminé]\x1b[0m\r\n');
     document.getElementById('termStartBtn').style.display='';
@@ -1631,6 +2614,98 @@ if(SOCKETIO_ENABLED){
   try{const w=parseInt(localStorage.getItem('sidecar_sb_w'));if(w>=MIN_W)setWidth(w);}catch{}
 })();
 
+// ── Chat APRS ─────────────────────────────────────────────────────────────────
+function fmtMsgTime(ts){try{return new Date(ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}catch{return'--:--'}}
+
+function renderMsgIn(msgs){
+  const el=document.getElementById('msgIn'); if(!el)return;
+  if(!msgs.length){el.innerHTML='<div style="padding:10px;color:var(--t3)">Aucun message reçu</div>';return;}
+  el.innerHTML=msgs.map(m=>`
+    <div style="padding:6px 8px;border-bottom:1px solid var(--bd)">
+      <div style="display:flex;justify-content:space-between;margin-bottom:2px">
+        <span style="color:var(--g);font-weight:700">${m.source||'?'}</span>
+        <span style="color:var(--t3);font-size:9px">${fmtMsgTime(m.timestamp)}</span>
+      </div>
+      <div style="color:var(--t1)">${m.msg_text||m.comment||''}</div>
+    </div>`).join('');
+}
+
+function renderMsgOut(msgs){
+  const el=document.getElementById('msgOut'); if(!el)return;
+  if(!msgs.length){el.innerHTML='<div style="padding:10px;color:var(--t3)">Aucun message envoyé</div>';return;}
+  el.innerHTML=msgs.map(m=>{
+    const ackBadge={acked:'<span class="msg-ack-status" style="color:var(--g)">✓ ACK</span>',retry_is:'<span class="msg-ack-status" style="color:var(--bl)">🌐 Retry IS…</span>',failed:'<span class="msg-ack-status" style="color:var(--rd)">❌ Échec</span>'};
+    const ack=ackBadge[m.status]||`<span class="msg-ack-status" style="color:var(--am)">⏳ En attente…</span>`;
+    return`<div style="padding:6px 8px;border-bottom:1px solid var(--bd)" id="msgout-${m.id}" data-msgno="${m.msg_no}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <span style="color:var(--bl);font-weight:700">→ ${m.dst}</span>
+        <span style="font-size:9px;color:${m.via==='rf'?'var(--g)':'var(--bl)'}"> ${m.via==='rf'?'📡 RF':'🌐 IS'}</span>
+        <span style="font-size:9px">${ack}</span>
+        <span style="color:var(--t3);font-size:9px">${fmtMsgTime(m.timestamp)}</span>
+      </div>
+      <div style="color:var(--t1)">${m.text||''}</div>
+    </div>`;
+  }).join('');
+}
+
+function loadMsgs(){
+  fetch('/api/chat/messages').then(r=>r.json()).then(d=>{
+    renderMsgIn(d.inbound||[]);
+    renderMsgOut(d.outbound||[]);
+  }).catch(()=>{});
+}
+
+function sendChatMsg(){
+  const dst=(document.getElementById('msgDst')?.value||'').trim();
+  const text=(document.getElementById('msgText')?.value||'').trim();
+  const st=document.getElementById('msgStatus');
+  if(!dst||!text){if(st)st.textContent='⚠ Destinataire et message requis';return;}
+  if(st)st.textContent='Envoi…';
+  fetch('/api/chat/send',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({dst,text})})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){
+        if(st)st.innerHTML=`<span style="color:var(--g)">✓ Envoyé → ${dst} [#${d.msg_no}]</span>`;
+        document.getElementById('msgText').value='';
+        document.getElementById('msgLen').textContent='0/67';
+        loadMsgs();
+      } else {
+        if(st)st.innerHTML=`<span style="color:var(--rd)">✗ ${d.error||'Erreur'}</span>`;
+      }
+    }).catch(e=>{if(st)st.innerHTML=`<span style="color:var(--rd)">✗ ${e}</span>`;});
+}
+
+// Mise à jour live sur ACK reçu
+if(typeof sock!=='undefined'){
+  sock.on('msg_acked',(d)=>{
+    // find row by src (=dst of our message) and msg_no
+    document.querySelectorAll('[id^="msgout-"]').forEach(el=>{
+      const dst=el.querySelector('span[style*="bl"]')?.textContent?.replace('→ ','').trim();
+      const mn=el.dataset.msgno;
+      if(dst===d.src && mn===String(d.msg_no)){
+        const sp=el.querySelector('.msg-ack-status');
+        if(sp){sp.style.color='var(--g)';sp.textContent='✓ ACK';}
+      }
+    });
+  });
+  sock.on('chat_status',(d)=>{
+    const el=document.getElementById(`msgout-${d.id}`);
+    if(!el)return;
+    const sp=el.querySelector('.msg-ack-status');
+    if(!sp)return;
+    const badges={acked:['var(--g)','✓ ACK'],retry_is:['var(--bl)','🌐 Retry IS…'],failed:['var(--rd)','❌ Échec']};
+    const b=badges[d.status];
+    if(b){sp.style.color=b[0];sp.textContent=b[1];}
+    // update via badge if changed to IS
+    if(d.via==='is'){
+      const vb=el.querySelector('span[style*="font-size:9px"]');
+      if(vb&&vb.textContent.includes('RF')){vb.style.color='var(--bl)';vb.textContent='🌐 IS';}
+    }
+  });
+  sock.on('new_frame',(f)=>{
+    if((f.data_type==='message'||f.data_type==='message_ack')&&document.querySelector('.ptab[data-p="messages"].on'))loadMsgs();
+  });
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadFrames();
 loadPositions();
@@ -1638,5 +2713,9 @@ pollStats();
 loadConfigRaw();
 setInterval(pollStats,15000);
 </script>
+
+
+</div>
+
 </body>
 </html>
