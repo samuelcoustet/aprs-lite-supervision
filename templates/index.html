@@ -567,6 +567,19 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
     <!-- ══ MÉTÉO ══ -->
     <div class="tc" id="t-meteo">
       <div class="panel" style="overflow-y:auto">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;flex-wrap:wrap">
+          <span style="font-size:10px;color:var(--t3);white-space:nowrap">📍 Site :</span>
+          <select id="meteoSiteSelect" onchange="onMeteoSiteChange()" style="flex:1;min-width:160px;background:var(--b2);border:1px solid var(--bd);border-radius:4px;color:var(--t1);font-size:10px;padding:2px 6px;font-family:inherit">
+            <option value="42.97,-0.78,1650">La Pierre Saint-Martin (1650 m) — Relais</option>
+            <option value="43.09,-0.71,344">Arette (344 m)</option>
+            <option value="43.12,-0.87,196">Tardets-Sorholus (196 m)</option>
+            <option value="42.93,-0.64,900">Lescun (900 m)</option>
+            <option value="43.19,-0.61,224">Oloron-Sainte-Marie (224 m)</option>
+            <option value="43.21,-0.88,141">Mauléon-Licharre (141 m)</option>
+            <option value="42.99,-0.42,527">Laruns (527 m)</option>
+            <option value="43.30,-0.37,180">Pau (180 m)</option>
+          </select>
+        </div>
         <div style="background:var(--b0);border-radius:6px;padding:10px;margin-bottom:10px">
           <div style="font-weight:600;font-size:11px;margin-bottom:6px;color:var(--g)">🌤️ Extérieur</div>
           <div id="sensorData" style="font-size:12px;color:var(--t3)">Chargement…</div>
@@ -1961,7 +1974,9 @@ function _wmoCap(code){
 }
 function _renderOpenMeteo(el){
   el.innerHTML='<div style="color:var(--t3);font-size:9px;margin-bottom:4px">⏳ Chargement données Open-Meteo…</div>';
-  fetch('/api/openmeteo').then(r=>r.json()).then(d=>{
+  const _sel=document.getElementById('meteoSiteSelect');
+  const [_slat,_slon,_selv]=(_sel?_sel.value:'42.97,-0.78,1650').split(',');
+  fetch(`/api/openmeteo?lat=${_slat}&lon=${_slon}&elev=${_selv}`).then(r=>r.json()).then(d=>{
     if(!d||!d.ok){
       el.innerHTML='<div style="color:var(--t3);font-size:11px">— non connecté</div><div style="color:var(--t3);font-size:9px;margin-top:4px">📡 Open-Meteo indisponible</div>';
       return;
@@ -2031,7 +2046,12 @@ function loadSensor(){
     // _renderSensor(d.box,'sensorDataBox'); // second capteur désactivé
   }).catch(()=>{});
 }
+function onMeteoSiteChange(){
+  try{localStorage.setItem('meteo_site',document.getElementById('meteoSiteSelect').value);}catch{}
+  loadMeteo();
+}
 function loadMeteo(){
+  try{const sv=localStorage.getItem('meteo_site');if(sv){const sel=document.getElementById('meteoSiteSelect');if(sel)sel.value=sv;}}catch{}
   loadSensor();
   if(sensorInterval)clearInterval(sensorInterval);
   sensorInterval=setInterval(loadSensor,30000);
@@ -2568,7 +2588,7 @@ if(SOCKETIO_ENABLED){
   const toggle=document.getElementById('sbToggle');
   const main=resizer.parentElement;
   const MIN_W=220, MAX_W=Math.round(window.innerWidth*0.85);
-  let collapsed=false, savedW=440, dragging=false, startX=0, startW=0;
+  let collapsed=false, savedW=Math.round(window.innerWidth*0.4), dragging=false, startX=0, startW=0;
 
   function setWidth(w){
     w=Math.max(MIN_W,Math.min(w,Math.round(window.innerWidth*0.85)));

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only collectors for aprs-lite sidecar dashboard."""
+"""Collectors and messaging helpers for aprs-lite sidecar dashboard."""
 
 from __future__ import annotations
 
@@ -23,6 +23,44 @@ ANSI_RE = re.compile(r"\x1b\[[0-9;]*m|\033\[[0-9;]*m")
 RF_RE = re.compile(r"^\[(\d+)(?:\.\d+)?(L)?(H)?\]\s+(.+)$")
 IG_RE = re.compile(r"^\[ig\]\s+(.+)$")
 IGTX_RE = re.compile(r"^\[ig>tx\]\s+(.+)$")
+
+_APRS_IS_IGSERVER = Path("/opt/aprs-lite/direwolf.conf")
+
+def _aprs_is_server() -> str:
+    try:
+        m = re.search(r'^IGSERVER\s+(\S+)', _APRS_IS_IGSERVER.read_text(), re.MULTILINE)
+        if m:
+            return m.group(1)
+    except Exception:
+        pass
+    return "euro.aprs2.net"
+
+def encode_aprs_message(addressee: str, text: str, msg_id: str) -> str:
+    return f":{addressee.upper().ljust(9)[:9]}:{text[:67]}{{{msg_id}"
+
+def encode_aprs_ack(addressee: str, msg_id: str) -> str:
+    return f":{addressee.upper().ljust(9)[:9]}:ack{msg_id}"
+
+def send_aprs_is(info: str, config: dict) -> tuple[bool, str]:
+    """Envoie un info-field APRS via TCP direct à APRS-IS.
+
+    config doit contenir CALLSIGN et PASSCODE.
+    """
+    callsign = config.get("CALLSIGN", "N0CALL").strip()
+    passcode = config.get("PASSCODE", "0").strip()
+    server   = _aprs_is_server()
+    packet   = f"{callsign}>APRS,TCPIP*:{info}"
+    try:
+        with socket.create_connection((server, 14580), timeout=10) as s:
+            f = s.makefile("rb")
+            f.readline()  # bannière
+            s.sendall(f"user {callsign} pass {passcode} vers aprs-lite-dashboard 1.0.8\r\n".encode())
+            f.readline()  # réponse login
+            s.sendall(f"{packet}\r\n".encode())
+            time.sleep(0.5)
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 
 def load_env_file(path: Path) -> dict:
@@ -533,13 +571,25 @@ def _make_beacon_packet(config: dict) -> str:
 
 def make_weather_packet(callsign: str, lat: float, lon: float, data: dict) -> str:
     ld, lm = int(abs(lat)), (abs(lat) % 1) * 60
-    od, om = int(abs(lon)), (abs(lon) % 1) * 60
+    od, om_deg = int(abs(lon)), (abs(lon) % 1) * 60
     ls = f"{ld:02d}{lm:05.2f}{'N' if lat >= 0 else 'S'}"
-    os_ = f"{od:03d}{om:05.2f}{'E' if lon >= 0 else 'W'}"
+    os_ = f"{od:03d}{om_deg:05.2f}{'E' if lon >= 0 else 'W'}"
     tf = round(data["temperature"] * 9 / 5 + 32)
     hh = int(data["humidity"]) % 100
     bp = min(99999, round(data["pressure"] * 10))
-    wx = f"c...s...g...t{tf:03d}h{hh:02d}b{bp:05d}"
+    # Vent : direction (ddd) et vitesse en nœuds (sss), rafale (ggg)
+    wdir = data.get("wind_dir")
+    wspd = data.get("wind_speed")  # km/h → knots
+    if wdir is not None and wspd is not None:
+        wdir_s = f"{int(wdir):03d}"
+        wspd_kn = max(0, round(wspd / 1.852))
+        wind_s = f"c{wdir_s}s{wspd_kn:03d}g{wspd_kn:03d}"
+    else:
+        wind_s = "c...s...g..."
+    # Pluie sur 1h en centièmes de pouce
+    rain = data.get("rain_1h", 0) or 0
+    rain_hundredths = max(0, round(rain / 25.4 * 100))
+    wx = f"{wind_s}t{tf:03d}r{rain_hundredths:03d}h{hh:02d}b{bp:05d}"
     extras = []
     if data.get("iaq", -1) >= 0:
         extras.append(f"IAQ={data['iaq']:.0f}/{data.get('iaq_accuracy', 0)}")
@@ -547,6 +597,11 @@ def make_weather_packet(callsign: str, lat: float, lon: float, data: dict) -> st
         extras.append(f"CO2={data['co2_eq']:.0f}ppm")
     if data.get("voc_eq", -1) > 0:
         extras.append(f"VOC={data['voc_eq']:.2f}ppm")
+    src = data.get("weather_source", "")
+    if src == "open-meteo":
+        extras.append("src=OM")
+    elif src == "hybrid":
+        extras.append("src=HYB")
     if extras:
         wx += " " + " ".join(extras)
     elif data.get("gas"):
@@ -649,21 +704,40 @@ def clock_set(value: str) -> tuple[bool, str]:
 
 # ── BME280/BME68x sensor ──────────────────────────────────────────────────────
 
-def get_sensor_data() -> dict:
+def _read_sensor_at(addr: int) -> dict:
+    """Lit un BME280 à l'adresse I2C donnée. Retourne dict ou {ok:False}."""
     try:
         import sys
         sys.path.insert(0, "/opt/aprs-lite")
-        from bme_sensor import open_sensor
-        sensor, chip = open_sensor()
-        data = sensor.read()
-        sensor.close()
-        if data is None:
-            return {"ok": False, "chip": chip, "error": "En attente première mesure BSEC2"}
-        data["ok"] = True
-        data["chip"] = chip
-        return data
+        from bme_sensor import BME280, BME68X_ID, BME280_ID, CHIP_ID_REG
+        import smbus2
+        bus = smbus2.SMBus(1)
+        try:
+            cid = bus.read_byte_data(addr, CHIP_ID_REG)
+        except OSError:
+            bus.close()
+            return {"ok": False, "error": f"Aucun capteur à 0x{addr:02x}"}
+        bus.close()
+        if cid == BME280_ID:
+            sensor = BME280(addr)
+            data = sensor.read()
+            sensor.close()
+            data["ok"] = True
+            data["chip"] = "BME280"
+            return data
+        return {"ok": False, "error": f"chip_id inconnu 0x{cid:02x} à 0x{addr:02x}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def get_sensor_data() -> dict:
+    """Capteur météo principal (0x76, SDO→GND)."""
+    return _read_sensor_at(0x76)
+
+
+def get_box_sensor_data() -> dict:
+    """Capteur boîtier (0x77, SDO→VCC)."""
+    return _read_sensor_at(0x77)
 
 
 # ── direwolf.conf ────────────────────────────────────────────────────────────
@@ -783,8 +857,55 @@ def stream_system_events():
         yield f'data: {_json.dumps({"error": str(exc)})}\n\n'
 
 
+# ── Open-Meteo fallback (La Pierre Saint-Martin 42.97°N -0.78°E, ~1650m) ──
+_om_cache: dict = {}  # {cache_key: {"ts": float, "data": dict}}
+_OM_TTL = 600  # 10 minutes
+
+
+def _fetch_openmeteo(lat=None, lon=None, elev=None) -> dict:
+    """Retourne temp/humidity/pressure/wind/rain depuis Open-Meteo, cache 10 min."""
+    import urllib.request as _ur
+    _lat  = lat  if lat  is not None else 42.97
+    _lon  = lon  if lon  is not None else -0.78
+    _elev = elev if elev is not None else 1650
+    cache_key = f"{_lat:.3f},{_lon:.3f}"
+    # Use per-location cache slot
+    if cache_key not in _om_cache:
+        _om_cache[cache_key] = {"ts": 0, "data": {}}
+    slot = _om_cache[cache_key]
+    now = time.time()
+    if now - slot["ts"] < _OM_TTL and slot["data"]:
+        return slot["data"]
+    try:
+        url = (
+            "https://api.open-meteo.com/v1/forecast"
+            f"?latitude={_lat}&longitude={_lon}&elevation={int(_elev)}"
+            "&current=temperature_2m,relative_humidity_2m,surface_pressure,"
+            "wind_speed_10m,wind_direction_10m,precipitation,snowfall,weather_code"
+            "&wind_speed_unit=kmh&timezone=Europe%2FParis"
+        )
+        with _ur.urlopen(url, timeout=8) as resp:
+            raw = json.loads(resp.read())
+        cur = raw.get("current", {})
+        data = {
+            "temperature": round(cur.get("temperature_2m", 0), 1),
+            "humidity":    round(cur.get("relative_humidity_2m", 0)),
+            "pressure":    round(cur.get("surface_pressure", 0), 1),
+            "wind_speed":  round(cur.get("wind_speed_10m", 0), 1),
+            "wind_dir":    round(cur.get("wind_direction_10m", 0)),
+            "rain_1h":     round(cur.get("precipitation", 0), 1),
+            "snow_1h":     round(cur.get("snowfall", 0), 1),
+            "weather_code": cur.get("weather_code", 0),
+        }
+        slot["ts"] = now
+        slot["data"] = data
+        return data
+    except Exception:
+        return {}
+
+
 def system_snapshot(service_name: str) -> dict:
-    return {
+    snap: dict = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "cpu_temp": get_cpu_temp(),
         "cpu_usage": get_cpu_usage(),
@@ -796,6 +917,35 @@ def system_snapshot(service_name: str) -> dict:
         "hostname": socket.gethostname(),
         "primary_ip": get_primary_ip(),
     }
+    bme = get_sensor_data()
+    om = _fetch_openmeteo()
+    if bme.get("ok"):
+        # Capteur physique présent : valeurs locales + vent/pluie Open-Meteo
+        snap["bme_temp"]       = bme.get("temperature")
+        snap["bme_humidity"]   = bme.get("humidity")
+        snap["bme_pressure"]   = bme.get("pressure")
+        snap["wind_speed"]     = om.get("wind_speed")
+        snap["wind_dir"]       = om.get("wind_dir")
+        snap["rain_1h"]        = om.get("rain_1h")
+        snap["snow_1h"]        = om.get("snow_1h")
+        snap["weather_source"] = "hybrid"
+    elif om:
+        # Capteur absent : tout depuis Open-Meteo
+        snap["bme_temp"]       = om.get("temperature")
+        snap["bme_humidity"]   = om.get("humidity")
+        snap["bme_pressure"]   = om.get("pressure")
+        snap["wind_speed"]     = om.get("wind_speed")
+        snap["wind_dir"]       = om.get("wind_dir")
+        snap["rain_1h"]        = om.get("rain_1h")
+        snap["snow_1h"]        = om.get("snow_1h")
+        snap["weather_source"] = "open-meteo"
+    # Second capteur désactivé (0x77 absent)
+    # box = get_box_sensor_data()
+    # if box.get("ok"):
+    #     snap["box_temp"]     = box.get("temperature")
+    #     snap["box_humidity"] = box.get("humidity")
+    #     snap["box_pressure"] = box.get("pressure")
+    return snap
 
 
 @dataclass
@@ -828,11 +978,13 @@ class JournalCollector:
         state: RuntimeState,
         socketio=None,
         journal_unit: str = "aprs-direwolf",
+        on_msg_event=None,
     ):
         self.db = db
         self.state = state
         self.socketio = socketio
         self.journal_unit = journal_unit
+        self._on_msg_event = on_msg_event  # callable(type, msg_id, parsed)
         self._threads: list[threading.Thread] = []
         self._stop = threading.Event()
 
@@ -884,6 +1036,19 @@ class JournalCollector:
         if "beacon" in raw_frame.lower() or parsed.get("source") == self.state.config_cache.get("CALLSIGN", ""):
             self.state.counts["beacons"] += 1
         self._emit("new_frame", parsed)
+
+        # Callback chat : ACK / REJ / message entrant
+        if self._on_msg_event:
+            dtype = parsed.get("data_type")
+            try:
+                if dtype == "message_ack":
+                    self._on_msg_event("ack", parsed.get("msg_ack") or "", parsed)
+                elif dtype == "message_rej":
+                    self._on_msg_event("rej", parsed.get("msg_rej") or "", parsed)
+                elif dtype == "message":
+                    self._on_msg_event("msg", parsed.get("msg_no") or "", parsed)
+            except Exception:
+                pass
 
     def _parse_line(self, line: str):
         clean = ANSI_RE.sub("", line.strip())

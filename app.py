@@ -985,6 +985,18 @@ def api_analyse():
     return jsonify(result)
 
 
+@app.route("/api/openmeteo")
+def api_openmeteo():
+    from collector import _fetch_openmeteo
+    lat  = request.args.get("lat",  type=float)
+    lon  = request.args.get("lon",  type=float)
+    elev = request.args.get("elev", type=float)
+    data = _fetch_openmeteo(lat=lat, lon=lon, elev=elev)
+    if not data:
+        return jsonify({"ok": False})
+    return jsonify({"ok": True, **data})
+
+
 # ── RF Coverage ──────────────────────────────────────────────────────────────
 
 import threading as _cov_thr
