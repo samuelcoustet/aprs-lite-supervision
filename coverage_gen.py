@@ -173,26 +173,20 @@ def write_png(width, height, rgba_bytes):
 
 def nu_to_rgba(nu, nu_threshold):
     """
-    Map ν to RGBA:
-      ν < -0.7  → solid green  (full LOS)
-      -0.7..0   → green fading to yellow-green (slight clearance)
-      0..ν_thr  → yellow-green fading to orange (diffraction zone, still covered)
+    Two-zone colour scheme:
+      ν < 0             → green  (LOS confirmed, certain coverage)
+      0 ≤ ν < threshold → orange (diffraction zone, uncertain boundary)
     """
-    if nu < -0.7:
-        # Full LOS: solid green
-        return (0, 200, 60, 217)
-    elif nu < 0.0:
-        # Near-LOS: slight fade, still bright green
-        t = (nu + 0.7) / 0.7   # 0→1 as ν goes -0.7→0
-        g = int(200 - t * 20)
-        return (0, g, 60, 217)
+    if nu < 0.0:
+        # LOS zone: solid green, slightly brighter when deep in LOS
+        t = max(0.0, min(1.0, (nu + 1.0) / 1.0))   # 1→0 as ν goes -1→0
+        g = int(200 + t * 15)
+        return (0, min(255, g), 60, 217)
     else:
-        # Diffraction zone (0 ≤ ν < nu_threshold)
+        # Diffraction zone: orange, fading slightly toward the edge
         t = nu / nu_threshold   # 0→1
-        r = int(t * 180)
-        g = int(200 - t * 80)
-        a = int(217 - t * 50)
-        return (r, g, 60, a)
+        a = int(217 - t * 60)   # slight opacity fade at the uncertain edge
+        return (230, 120, 20, a)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
