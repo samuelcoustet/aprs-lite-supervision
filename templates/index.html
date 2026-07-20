@@ -2246,7 +2246,7 @@ function toggleCoverage(){
   }
   showActionMsg('Vérification couverture RF…', true);
   fetch('/api/coverage/status').then(r=>r.json()).then(d=>{
-    if(d.status==='ready' && d.image_url){
+    if(d.status==='done' && d.bounds){
       coverageBounds = d.bounds;
       coverageReady = true;
       _showCoverageLayer();
@@ -2279,7 +2279,7 @@ function _pollCoverage(){
   if(_coveragePollTimer) clearTimeout(_coveragePollTimer);
   _coveragePollTimer = setTimeout(()=>{
     fetch('/api/coverage/status').then(r=>r.json()).then(d=>{
-      if(d.status==='ready' && d.image_url){
+      if(d.status==='done' && d.bounds){
         coverageBounds = d.bounds;
         coverageReady = true;
         _showCoverageLayer();
