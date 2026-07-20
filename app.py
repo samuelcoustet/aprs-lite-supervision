@@ -973,6 +973,63 @@ def api_analyse():
     return jsonify(result)
 
 
+# ── RF Coverage ──────────────────────────────────────────────────────────────
+
+import threading as _cov_thr
+_cov_proc = [None]
+_cov_lock = _cov_thr.Lock()
+_COV_PNG  = os.path.join(os.path.dirname(__file__), "coverage_cache.png")
+_COV_META = _COV_PNG + ".json"
+
+@app.route("/api/coverage/status")
+def api_coverage_status():
+    import json as _json
+    with _cov_lock:
+        running = _cov_proc[0] is not None and _cov_proc[0].poll() is None
+    if running:
+        return jsonify({"status": "running"})
+    if os.path.exists(_COV_META):
+        try:
+            meta = _json.loads(open(_COV_META).read())
+            meta["status"] = "done"
+            return jsonify(meta)
+        except Exception:
+            pass
+    return jsonify({"status": "idle"})
+
+@app.route("/api/coverage/generate", methods=["POST"])
+def api_coverage_generate():
+    import subprocess, json as _json
+    data = request.get_json(silent=True) or {}
+    radius_km = float(data.get("radius_km", 20))
+    grid_size  = int(data.get("grid_size",  128))
+    height_m   = float(data.get("height_m", 15))
+    with _cov_lock:
+        if _cov_proc[0] is not None and _cov_proc[0].poll() is None:
+            return jsonify({"status": "already_running"})
+        cfg = SETTINGS["LITE_CONFIG"]
+        lat = float(cfg.get("LAT", 0))
+        lon = float(cfg.get("LON", 0))
+        cmd = [
+            "python3",
+            os.path.join(os.path.dirname(__file__), "coverage_gen.py"),
+            str(lat), str(lon),
+            "--height", str(height_m),
+            "--radius", str(radius_km),
+            "--grid",   str(grid_size),
+            "--out",    _COV_PNG,
+        ]
+        _cov_proc[0] = subprocess.Popen(cmd, cwd=os.path.dirname(__file__))
+    return jsonify({"status": "started"})
+
+@app.route("/api/coverage/image")
+def api_coverage_image():
+    from flask import send_file
+    if os.path.exists(_COV_PNG):
+        return send_file(_COV_PNG, mimetype="image/png")
+    return ("", 404)
+
+
 # ── Connected clients ─────────────────────────────────────────────────────────
 
 @app.route("/api/system/clients")
