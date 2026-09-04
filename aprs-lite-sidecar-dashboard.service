@@ -1,7 +1,7 @@
 [Unit]
 Description=APRS Lite Sidecar Dashboard
-After=network.target aprs-direwolf.service
-Wants=aprs-direwolf.service
+After=network-online.target aprs-direwolf.service
+Wants=network-online.target aprs-direwolf.service
 
 [Service]
 Type=simple
@@ -16,9 +16,15 @@ Environment=SERVICE_NAME=aprs-direwolf
 Environment=TUI_SERVICE=aprs-lite-tui
 Environment=WATCHDOG_SERVICE=aprs-watchdog
 Environment=JOURNAL_UNIT=aprs-direwolf
-ExecStart=/home/pi/aprs-sidecar-dashboard/venv/bin/python3 /home/pi/aprs-sidecar-dashboard/app.py
+ExecStart=/home/pi/aprs-sidecar-dashboard/venv/bin/gunicorn \
+    --worker-class eventlet -w 1 \
+    --bind 0.0.0.0:5080 \
+    --timeout 120 \
+    --access-logfile - --error-logfile - \
+    app:app
 Restart=always
-RestartSec=10
+RestartSec=5
+KillMode=control-group
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=aprs-lite-sidecar-dashboard

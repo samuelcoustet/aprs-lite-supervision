@@ -120,7 +120,7 @@ def require_login():
         return redirect(url_for("login"))
 
 if HAS_SOCKETIO:
-    socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+    socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 else:
     socketio = None
 
@@ -1294,12 +1294,12 @@ if socketio is not None:
 
 
 def main():
+    # Gunicorn imports `app` directly; this is only for local debug execution.
     if socketio is not None:
         socketio.run(
             app,
             host=SETTINGS["DASHBOARD_HOST"],
             port=SETTINGS["DASHBOARD_PORT"],
-            allow_unsafe_werkzeug=True,
         )
     else:
         app.run(

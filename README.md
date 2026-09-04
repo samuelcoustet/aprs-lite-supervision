@@ -1,6 +1,6 @@
 # aprs-lite-sidecar-dashboard
 
-Read-only dashboard that runs next to `aprs-lite` without modifying it.
+Dashboard that runs next to `aprs-lite` without modifying its radio configuration.
 
 ## What it reads
 
@@ -33,6 +33,22 @@ CONFIG_PATH=/opt/aprs-lite/config.env \
 DASHBOARD_PORT=5080 \
 ./venv/bin/python3 app.py
 ```
+
+## Production service
+
+Use Gunicorn with one Eventlet worker. Do not run the Flask/Werkzeug server in
+parallel and do not enable both `aprs-dashboard` and
+`aprs-lite-sidecar-dashboard`: two services bound to port `5080` can cause
+restart loops and starve the Pi audio stack.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now aprs-dashboard
+curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1:5080/login
+```
+
+Gunicorn keeps a master process and one worker process; that is one dashboard
+instance, not a duplicate service.
 
 ## Suggested deploy layout
 

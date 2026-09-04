@@ -1,4 +1,5 @@
 flask>=3.1
 flask-socketio>=5.4
-gevent>=24.0
-gevent-websocket
+eventlet==0.41.2
+# Gunicorn 23+ removed the eventlet worker implementation.
+gunicorn==22.0.0
