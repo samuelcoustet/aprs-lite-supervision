@@ -3,6 +3,26 @@
 
 from __future__ import annotations
 
+def _get_altitude_m():
+    try:
+        with open("/opt/aprs-lite/config.env") as f:
+            for ln in f:
+                if ln.startswith("ALTITUDE_M"):
+                    return float(ln.split("=",1)[1].strip().strip('"').strip("'"))
+    except Exception: pass
+    return 0.0
+
+def _sea_level_pressure(p_hpa, alt_m, t_c):
+    """Convert station pressure to sea-level (ISA barometric)."""
+    if p_hpa is None or not alt_m: return p_hpa
+    try:
+        t = float(t_c) if t_c is not None else 15.0
+        a = float(alt_m)
+        return round(p_hpa * (1 - (0.0065 * a) / (t + 0.0065 * a + 273.15)) ** -5.257, 1)
+    except Exception:
+        return p_hpa
+
+
 import json
 import os
 import re
@@ -583,9 +603,9 @@ def make_weather_packet(callsign: str, lat: float, lon: float, data: dict) -> st
     if wdir is not None and wspd is not None:
         wdir_s = f"{int(wdir):03d}"
         wspd_kn = max(0, round(wspd / 1.852))
-        wind_s = f"c{wdir_s}s{wspd_kn:03d}g{wspd_kn:03d}"
+        wind_s = f"{wdir_s}/{wspd_kn:03d}g{wspd_kn:03d}"
     else:
-        wind_s = "c...s...g..."
+        wind_s = ".../...g..."
     # Pluie sur 1h en centièmes de pouce
     rain = data.get("rain_1h", 0) or 0
     rain_hundredths = max(0, round(rain / 25.4 * 100))
@@ -722,6 +742,12 @@ def _read_sensor_at(addr: int) -> dict:
             sensor = BME280(addr)
             data = sensor.read()
             sensor.close()
+            try:
+                _alt = _get_altitude_m()
+                if data and data.get("pressure") and _alt:
+                    data["pressure_raw"] = data["pressure"]
+                    data["pressure"] = _sea_level_pressure(data["pressure"], _alt, data.get("temperature"))
+            except Exception: pass
             data["ok"] = True
             data["chip"] = "BME280"
             return data
