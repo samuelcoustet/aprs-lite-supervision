@@ -203,7 +203,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:var(--b3);border:1px s
     <div>STATIONS <span class="v" id="hS">0</span></div>
     <div>UPTIME <span class="v" id="hU">--</span></div>
     <a href="/doc" target="_blank" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:2px 8px;text-decoration:none;font-family:inherit">📖 Notice</a>
-    <form method="post" action="/logout" style="margin:0"><button type="submit" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit">⏻ Déconnexion</button></form>
+    <form method="post" action="/logout" id="logoutForm" style="margin:0"><button type="button" onclick="doLogout()" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t3);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit">⏻ Déconnexion</button></form>
   </div>
 </header>
 <div class="main">
@@ -754,6 +754,10 @@ function aprsIcon(table, code){
 
 // ── Pause ────────────────────────────────────────────────────────────────────
 let _paused = false;
+function doLogout(){
+  if(typeof sock!=='undefined'&&sock&&sock.connected)sock.disconnect();
+  document.getElementById('logoutForm').submit();
+}
 function togglePause(){
   _paused = !_paused;
   const btn = document.getElementById('pauseBtn');
