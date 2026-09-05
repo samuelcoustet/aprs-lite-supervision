@@ -1310,13 +1310,15 @@ function showDet(f){
   const distRow=f.distance_km!=null?`${f.distance_km} km / ${f.bearing_deg}°`:'-';
     const detRows=aprsDetailRows(f);
   const rows=detRows.map(({l,v})=>`<div class="dr"><span class="dlb">${l}</span><span class="dval">${v??'-'}</span></div>`).join('');
-  panel.innerHTML=`<div class="dt" style="display:flex;align-items:center;gap:8px">${symHtml}<span>${f.source||'?'}</span></div>${rows}<div class="raw">${f.raw||''}</div>`;
+  panel.innerHTML=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><button onclick="closeDet()" style="background:none;border:1px solid var(--bd);border-radius:4px;color:var(--t2);font-size:10px;padding:2px 8px;cursor:pointer;font-family:inherit" title="Fermer (Echap)">← Retour</button><div class="dt" style="display:flex;align-items:center;gap:8px;margin:0">${symHtml}<span>${f.source||'?'}</span></div></div>${rows}<div class="raw">${f.raw||''}</div>`;
   // Ouvrir popup sur la carte si la station a une position
   if(f.lat!=null&&f.lon!=null&&f.source&&markers[f.source]){
     map.setView([f.lat,f.lon],13);
     markers[f.source].openPopup();
   }
 }
+function closeDet(){const p=document.getElementById('fDet');p.className='dp';p.innerHTML='';}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){const p=document.getElementById('fDet');if(p.classList.contains('vis'))closeDet();}});
 
 // ── Légende icônes APRS ──────────────────────────────────────────────────────
 const APRS_ICONS=[
