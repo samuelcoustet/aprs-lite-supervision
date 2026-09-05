@@ -16,6 +16,7 @@ Environment=SERVICE_NAME=aprs-direwolf
 Environment=TUI_SERVICE=aprs-lite-tui
 Environment=WATCHDOG_SERVICE=aprs-watchdog
 Environment=JOURNAL_UNIT=aprs-direwolf
+ExecStartPre=-/bin/bash -c 'pgrep -f "gunicorn.*app:app" | xargs -r kill -TERM 2>/dev/null; sleep 1; pgrep -f "gunicorn.*app:app" | xargs -r kill -9 2>/dev/null; exit 0'
 ExecStart=/home/pi/aprs-sidecar-dashboard/venv/bin/gunicorn \
     --worker-class eventlet -w 1 \
     --bind 0.0.0.0:5080 \
@@ -25,6 +26,8 @@ ExecStart=/home/pi/aprs-sidecar-dashboard/venv/bin/gunicorn \
 Restart=always
 RestartSec=5
 KillMode=control-group
+CPUQuota=50%
+MemoryMax=256M
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=aprs-lite-sidecar-dashboard
