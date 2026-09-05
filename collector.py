@@ -626,7 +626,7 @@ def make_weather_packet(callsign: str, lat: float, lon: float, data: dict) -> st
         wx += " " + " ".join(extras)
     elif data.get("gas"):
         wx += f" Gas:{data['gas']}ohm"
-    return f"{callsign}>APNW01,WIDE1-1:!{ls}/{os_}_{wx}"
+    return f"{callsign}>APNW01,WIDE1-1:!{ls}/{os_}r{wx}"
 
 
 def send_kiss_packet(packet: str) -> tuple[bool, str]:
