@@ -67,7 +67,7 @@ if [ "${DASH_CPU:-0}" -gt "$CPU_THRESHOLD" ]; then
 fi
 
 # --- 4. Doublon detection ---
-PIDS=$(pgrep -f 'gunicorn.*app:app' 2>/dev/null | grep -v "$$")
+PIDS=$(pgrep -f '[g]unicorn.*app:app' 2>/dev/null | grep -v "$$")
 COUNT=$(echo "$PIDS" | grep -c '[0-9]' || true)
 if [ "$COUNT" -gt 2 ]; then
     log "WARN: $COUNT gunicorn PIDs (expected 2) -> restarting"
@@ -75,22 +75,36 @@ if [ "$COUNT" -gt 2 ]; then
     sleep 3
 fi
 
-# --- 5. HTTP health + idle check ---
-RESP=$(curl -s --max-time "$TIMEOUT" "$URL" 2>/dev/null)
-HTTP_CODE=$(echo "$RESP" | python3 -c "import sys,json; print('ok')" 2>/dev/null && echo "ok" || echo "fail")
-
-if [ -z "$RESP" ]; then
-    # No response at all
-    log "WARN: dashboard no response -> restarting"
+# --- 5. Port health check (avoids eventlet blocking on HTTP) ---
+if ! ss -tlnp 2>/dev/null | grep -q ":5080 "; then
+    log "WARN: port 5080 not listening -> restarting"
     sudo -n /bin/systemctl restart aprs-dashboard
     exit 0
 fi
 
-# Parse alive endpoint
-CLIENTS=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('clients',0))" 2>/dev/null || echo "-1")
-IDLE=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('idle_seconds',0))" 2>/dev/null || echo "0")
+# --- 6. Idle timeout check ---
+ACTIVITY_FILE="/tmp/dashboard_active"
 
-# --- 6. Idle timeout: 0 clients AND idle > 30 min -> stop ---
+# Try alive endpoint (short timeout — eventlet may be busy with WebSocket)
+CLIENTS=-1
+IDLE=0
+RESP=$(curl -s --max-time 3 "$URL" 2>/dev/null)
+if [ -n "$RESP" ]; then
+    CLIENTS=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('clients',0))" 2>/dev/null || echo "-1")
+    IDLE=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('idle_seconds',0))" 2>/dev/null || echo "0")
+fi
+
+# If alive unreachable (eventlet busy), fall back to activity file age
+if [ "${CLIENTS}" = "-1" ]; then
+    if [ -f "$ACTIVITY_FILE" ]; then
+        LAST_TS=$(cat "$ACTIVITY_FILE" 2>/dev/null || echo "0")
+        NOW_TS=$(date +%s)
+        IDLE=$(( NOW_TS - LAST_TS ))
+    fi
+    CLIENTS=0
+fi
+
+# --- 7. Idle timeout: 0 clients AND idle > 30 min -> stop ---
 if [ "${CLIENTS}" = "0" ] && [ "${IDLE}" -gt "$IDLE_MAX" ]; then
     log "INFO: idle ${IDLE}s, 0 clients -> stopping dashboard (will wake in ${IDLE_WAKE}s)"
     sudo -n /bin/systemctl stop aprs-dashboard
