@@ -586,7 +586,7 @@ def _make_beacon_packet(config: dict) -> str:
         os_ = f"{od:03d}{om:05.2f}{'E' if lon >= 0 else 'W'}"
         return f"{callsign}>APNW01,WIDE1-1:!{ls}/{os_}r {comment}"
     except Exception:
-        return f"{callsign}>APNW01,WIDE1-1:!0000.00N/00000.00W/r {comment}"
+        return f"{callsign}>APNW01,WIDE1-1:!0000.00N/00000.00W# {comment}"
 
 
 def make_weather_packet(callsign: str, lat: float, lon: float, data: dict) -> str:
