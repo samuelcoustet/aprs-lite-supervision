@@ -112,9 +112,30 @@ def _check_password(pw: str) -> bool:
     return _load_auth().get("password_hash") == _hash_pw(pw)
 
 
+_ACTIVITY_FILE = Path("/tmp/dashboard_active")
+_IDLE_FLAG = Path("/tmp/dashboard_idle")
+
+def _touch_activity():
+    try:
+        _ACTIVITY_FILE.write_text(str(int(__import__("time").time())))
+    except Exception:
+        pass
+
+# Remove idle flag on startup so watchdog knows we're live
+try:
+    _IDLE_FLAG.unlink(missing_ok=True)
+except Exception:
+    pass
+_touch_activity()
+
+@app.after_request
+def _track_activity(response):
+    _touch_activity()
+    return response
+
 @app.before_request
 def require_login():
-    if request.path.startswith("/static") or request.path.startswith("/login"):
+    if request.path.startswith("/static") or request.path.startswith("/login") or request.path == "/api/system/alive":
         return
     if not session.get("logged_in"):
         return redirect(url_for("login"))
@@ -1063,6 +1084,19 @@ def api_system_clients():
     # deduplicate IPs
     unique = list(dict.fromkeys(clients))
     return jsonify({"count": len(unique), "ips": unique})
+
+
+@app.route("/api/system/alive")
+def api_system_alive():
+    """Health + idle check for watchdog (no auth required)."""
+    with _clients_lock:
+        n = len(set(_connected_clients.values()))
+    try:
+        ts = int(_ACTIVITY_FILE.read_text().strip())
+        idle = int(__import__("time").time()) - ts
+    except Exception:
+        idle = 0
+    return jsonify({"ok": True, "clients": n, "idle_seconds": idle})
 
 
 # ── Export CSV preview ────────────────────────────────────────────────────────

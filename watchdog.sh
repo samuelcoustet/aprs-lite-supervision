@@ -3,63 +3,97 @@
 # Priority: relay (direwolf + aprs-lite) must ALWAYS run.
 # Dashboard is secondary and will be killed if it threatens the relay.
 
-URL="http://127.0.0.1:5080/api/stats"
+URL="http://127.0.0.1:5080/api/system/alive"
 TIMEOUT=10
 LOG="/tmp/watchdog.log"
 LOAD_THRESHOLD=10
 CPU_THRESHOLD=80
+IDLE_MAX=1800  # 30 minutes
+IDLE_FLAG="/tmp/dashboard_idle"
+IDLE_WAKE=600  # 10 min: try restarting to check for new users
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
+
+# --- 0. Relay health: ensure direwolf + aprs-lite ALWAYS run ---
+if ! systemctl is-active --quiet aprs-direwolf; then
+    log "CRIT: direwolf down -> restarting"
+    sudo -n /bin/systemctl restart aprs-direwolf
+fi
+if ! systemctl is-active --quiet aprs-lite-tui; then
+    log "CRIT: aprs-lite-tui down -> restarting"
+    sudo -n /bin/systemctl restart aprs-lite-tui
+fi
 
 # --- 1. CPU guard: if system load is critical, restart dashboard to protect relay ---
 LOAD=$(awk '{printf "%d", $1}' /proc/loadavg)
 if [ "$LOAD" -gt "$LOAD_THRESHOLD" ]; then
     log "CRIT: load=$LOAD (>${LOAD_THRESHOLD}) -> restart dashboard to protect relay"
-    sudo /bin/systemctl restart aprs-dashboard
+    sudo -n /bin/systemctl restart aprs-dashboard
     sleep 5
-    # If load is still critical after restart, stop dashboard entirely
     LOAD2=$(awk '{printf "%d", $1}' /proc/loadavg)
     if [ "$LOAD2" -gt "$LOAD_THRESHOLD" ]; then
         log "CRIT: load=$LOAD2 still high -> stopping dashboard"
-        sudo /bin/systemctl stop aprs-dashboard
-        # Ensure direwolf and aprs-lite are running
-        sudo /bin/systemctl start aprs-direwolf 2>/dev/null
-        sudo /bin/systemctl start aprs-lite-tui 2>/dev/null
+        sudo -n /bin/systemctl stop aprs-dashboard
+        sudo -n /bin/systemctl start aprs-direwolf 2>/dev/null
+        sudo -n /bin/systemctl start aprs-lite-tui 2>/dev/null
         exit 0
     fi
 fi
 
-# --- 2. Dashboard CPU check: if gunicorn eats > 80% CPU, restart it ---
+# --- 2. Dashboard not running ---
+if ! systemctl is-active --quiet aprs-dashboard; then
+    if [ -f "$IDLE_FLAG" ]; then
+        # Intentional idle stop — wake up periodically to check for new users
+        IDLE_AGE=$(( $(date +%s) - $(stat -c %Y "$IDLE_FLAG" 2>/dev/null || echo 0) ))
+        if [ "$IDLE_AGE" -gt "$IDLE_WAKE" ]; then
+            log "INFO: idle wake-up check (${IDLE_AGE}s since idle stop)"
+            rm -f "$IDLE_FLAG"
+            sudo -n /bin/systemctl start aprs-dashboard
+        fi
+    else
+        # Crashed — restart immediately
+        log "WARN: dashboard down (not idle) -> restarting"
+        sudo -n /bin/systemctl restart aprs-dashboard
+    fi
+    exit 0
+fi
+
+# --- 3. Dashboard CPU check ---
 DASH_CPU=$(ps -C gunicorn -o %cpu= 2>/dev/null | awk '{s+=$1} END {printf "%d", s}')
 if [ "${DASH_CPU:-0}" -gt "$CPU_THRESHOLD" ]; then
     log "WARN: dashboard CPU=${DASH_CPU}% (>${CPU_THRESHOLD}%) -> restarting"
-    sudo /bin/systemctl restart aprs-dashboard
+    sudo -n /bin/systemctl restart aprs-dashboard
     sleep 3
 fi
 
-# --- 3. Doublon detection: let systemd own the process tree ---
-PIDS=$(pgrep -f 'gunicorn.*app:app' 2>/dev/null)
+# --- 4. Doublon detection ---
+PIDS=$(pgrep -f 'gunicorn.*app:app' 2>/dev/null | grep -v "$$")
 COUNT=$(echo "$PIDS" | grep -c '[0-9]' || true)
-# gunicorn master + 1 eventlet worker = 2 PIDs normal
 if [ "$COUNT" -gt 2 ]; then
-    log "WARN: $COUNT gunicorn PIDs (expected 2) -> restarting aprs-dashboard"
-    sudo /bin/systemctl restart aprs-dashboard
+    log "WARN: $COUNT gunicorn PIDs (expected 2) -> restarting"
+    sudo -n /bin/systemctl restart aprs-dashboard
     sleep 3
 fi
 
-# --- 4. HTTP health check ---
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time "$TIMEOUT" "$URL" 2>/dev/null || echo "000")
-if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ]; then
-    log "WARN: dashboard HTTP $HTTP_CODE -> restarting aprs-dashboard"
-    sudo /bin/systemctl restart aprs-dashboard
+# --- 5. HTTP health + idle check ---
+RESP=$(curl -s --max-time "$TIMEOUT" "$URL" 2>/dev/null)
+HTTP_CODE=$(echo "$RESP" | python3 -c "import sys,json; print('ok')" 2>/dev/null && echo "ok" || echo "fail")
+
+if [ -z "$RESP" ]; then
+    # No response at all
+    log "WARN: dashboard no response -> restarting"
+    sudo -n /bin/systemctl restart aprs-dashboard
+    exit 0
 fi
 
-# --- 5. Relay health: ensure direwolf is always running ---
-if ! systemctl is-active --quiet aprs-direwolf; then
-    log "CRIT: direwolf down -> restarting"
-    sudo /bin/systemctl restart aprs-direwolf
-fi
-if ! systemctl is-active --quiet aprs-lite-tui; then
-    log "CRIT: aprs-lite-tui down -> restarting"
-    sudo /bin/systemctl restart aprs-lite-tui
+# Parse alive endpoint
+CLIENTS=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('clients',0))" 2>/dev/null || echo "-1")
+IDLE=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('idle_seconds',0))" 2>/dev/null || echo "0")
+
+# --- 6. Idle timeout: 0 clients AND idle > 30 min -> stop ---
+if [ "${CLIENTS}" = "0" ] && [ "${IDLE}" -gt "$IDLE_MAX" ]; then
+    log "INFO: idle ${IDLE}s, 0 clients -> stopping dashboard (will wake in ${IDLE_WAKE}s)"
+    sudo -n /bin/systemctl stop aprs-dashboard
+    touch "$IDLE_FLAG"
+    exit 0
 fi
