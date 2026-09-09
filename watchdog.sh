@@ -75,7 +75,7 @@ if [ "$COUNT" -gt 2 ]; then
     sleep 3
 fi
 
-# --- 5. Port health check (avoids eventlet blocking on HTTP) ---
+# --- 5. Port health check (avoids gevent blocking on HTTP) ---
 if ! ss -tlnp 2>/dev/null | grep -q ":5080 "; then
     log "WARN: port 5080 not listening -> restarting"
     sudo -n /bin/systemctl restart aprs-dashboard
@@ -85,7 +85,7 @@ fi
 # --- 6. Idle timeout check ---
 ACTIVITY_FILE="/tmp/dashboard_active"
 
-# Try alive endpoint (short timeout — eventlet may be busy with WebSocket)
+# Try alive endpoint (short timeout — worker may be busy with WebSocket)
 CLIENTS=-1
 IDLE=0
 RESP=$(curl -s --max-time 3 "$URL" 2>/dev/null)
@@ -94,7 +94,7 @@ if [ -n "$RESP" ]; then
     IDLE=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('idle_seconds',0))" 2>/dev/null || echo "0")
 fi
 
-# If alive unreachable (eventlet busy), fall back to activity file age
+# If alive unreachable (worker busy), fall back to activity file age
 if [ "${CLIENTS}" = "-1" ]; then
     if [ -f "$ACTIVITY_FILE" ]; then
         LAST_TS=$(cat "$ACTIVITY_FILE" 2>/dev/null || echo "0")
